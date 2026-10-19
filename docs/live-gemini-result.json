@@ -1,0 +1,13 @@
+{
+  "date": "2026-10-19T19:12:39.692603+00:00",
+  "provider": "gemini",
+  "mode": "catalog-and-new-test-chat",
+  "credentials_included": false,
+  "models": 1,
+  "projects": 0,
+  "chats": 50,
+  "reply_received": true,
+  "followup_received": true,
+  "same_upstream_conversation": true,
+  "status": "passed"
+}

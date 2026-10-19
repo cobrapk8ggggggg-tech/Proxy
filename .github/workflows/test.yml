@@ -1,0 +1,36 @@
+name: Proxy contracts and dashboard
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+      - run: pip install -r requirements-dev.txt
+      - run: ruff check --select F821,F822,F823 proxy scripts tests qwen_proxy.py
+      - run: python -m pytest -q
+      - run: npm ci
+      - run: npm run check:ui
+      - run: npx playwright install --with-deps chromium webkit
+      - run: npm run test:browser
+      - run: docker build -t aurum-proxy:ci .
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: browser-results
+          path: |
+            playwright-report/
+            test-results/
+          retention-days: 7

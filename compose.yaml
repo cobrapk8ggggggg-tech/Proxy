@@ -1,0 +1,15 @@
+services:
+  proxy:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:?Set ADMIN_PASSWORD in .env}
+      DATA_DIR: /data
+      COOKIE_SECURE: ${COOKIE_SECURE:-false}
+      RATE_LIMIT_PER_MINUTE: ${RATE_LIMIT_PER_MINUTE:-120}
+    volumes:
+      - aurum-data:/data
+    restart: unless-stopped
+volumes:
+  aurum-data:

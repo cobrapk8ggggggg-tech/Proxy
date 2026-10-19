@@ -1,0 +1,17 @@
+.git
+.env
+.env.*
+.venv
+node_modules
+data
+*.db*
+*.key
+proxies.txt
+__pycache__
+.pytest_cache
+tests
+test-results
+playwright-report
+docs
+reference
+.local-live

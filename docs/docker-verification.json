@@ -1,0 +1,9 @@
+{
+  "image_built": true,
+  "health": true,
+  "admin_login": true,
+  "account_saved": true,
+  "restart_persistence": true,
+  "credentials_not_exposed": true,
+  "status": "passed"
+}
