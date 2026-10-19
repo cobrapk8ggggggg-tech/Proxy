@@ -26,6 +26,7 @@ jobs:
       - run: npx playwright install --with-deps chromium webkit
       - run: npm run test:browser
       - run: docker build -t aurum-proxy:ci .
+      - run: docker build -f Dockerfile.railway -t aurum-proxy:railway-ci .
       - uses: actions/upload-artifact@v4
         if: always()
         with:
