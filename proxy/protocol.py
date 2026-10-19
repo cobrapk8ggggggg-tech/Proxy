@@ -44,7 +44,7 @@ def canonical(messages):
     ]
 
 
-def prompt_for(messages, tools, choice, parallel):
+def prompt_for(messages, tools, choice, parallel, environment="application"):
     instructions = []
     dialogue = []
     names = {
@@ -64,8 +64,32 @@ def prompt_for(messages, tools, choice, parallel):
                 ensure_ascii=False,
             )
         if role == "tool":
-            text = f"Tool result {names.get(m.get('tool_call_id'),m.get('name','tool'))} ({m.get('tool_call_id','')}):\n{text}"
+            text = f"APPLICATION TOOL RESULT {names.get(m.get('tool_call_id'),m.get('name','tool'))} ({m.get('tool_call_id','')}):\n{text}"
         dialogue.append(f"{role.upper()}:\n{text}")
+    boundary = ""
+    if tools:
+        boundary = (
+            "EXECUTION ENVIRONMENT CONTRACT:\n"
+            "The client application (for example OpenMinis) and ChatGPT's native sandbox are TWO SEPARATE ENVIRONMENTS. "
+            "The supplied functions belong to the CLIENT APPLICATION. Its Linux shell, files, network, installed packages, browser and device are NOT your native environment. "
+            "A tool name appearing in this text is an application function to REQUEST, not a native tool to execute. "
+            "To act on application/device files or execute an application command, return the JSON tool_calls envelope below and STOP. "
+            "Do not run the command internally first. Wait for the next APPLICATION TOOL RESULT before reporting application execution, success, failure or file contents. "
+            "Do not say application tools are unavailable merely because you cannot invoke them natively: the client executes your JSON request. "
+            "Never fabricate a tool result, tool permission failure or application filesystem state. "
+        )
+        boundary += (
+            "Native ChatGPT tools are permitted ONLY for independent work in ChatGPT's own environment, such as calculations or files already available there. "
+            "Keep native and application results distinct. Native files are not application files; transferring them requires an explicit application tool call carrying the actual data. "
+            "When the user's requested environment is unclear, prefer the application. "
+            if environment == "hybrid"
+            else "For this turn, do not invoke ANY native ChatGPT tools (including python, container, terminal, browser, search or computer). Use only the application JSON tool-call protocol. "
+        )
+        if choice == "none":
+            boundary += "The client set tool_choice=none: do not request any application tools in this turn. Respond in text without claiming new application execution."
+        else:
+            boundary += 'Application call format: {"tool_calls":[{"name":"tool_name","arguments":{}}]}. Your ENTIRE response must be that JSON when requesting a tool.'
+        instructions.append(boundary)
     if tools and choice != "none":
         instructions.append(
             'Use only the tools listed below when needed. To request tools, your ENTIRE response must be a JSON object {"tool_calls":[{"name":"tool_name","arguments":{}}]}. Arguments must follow the full JSON Schema. Do not invent results. After tool results arrive, continue the task. Otherwise respond normally. '
@@ -82,8 +106,10 @@ def prompt_for(messages, tools, choice, parallel):
         if isinstance(choice, dict):
             instructions.append("Use this tool: " + choice["function"]["name"])
     return (
-        "SYSTEM:\n" + "\n\n".join(instructions) + "\n\n" if instructions else ""
-    ) + "\n\n".join(dialogue)
+        ("SYSTEM:\n" + "\n\n".join(instructions) + "\n\n" if instructions else "")
+        + "\n\n".join(dialogue)
+        + ("\n\n" + boundary if boundary else "")
+    )
 
 
 def parse_tools(text, tools, choice="auto", parallel=True):
@@ -189,6 +215,8 @@ def chat_chunks(result, include_usage=False):
 
     yield part({"role": "assistant"})
     message = result["choices"][0]["message"]
+    if message.get("tool_calls") and message.get("content"):
+        yield part({"content": message["content"]})
     if message.get("tool_calls"):
         for i, call in enumerate(message["tool_calls"]):
             yield part(
@@ -360,6 +388,7 @@ def as_response(result):
         "incomplete_details": None,
         "parallel_tool_calls": True,
         "conversation_id": result["conversation_id"],
+        **({"execution": result["execution"]} if "execution" in result else {}),
     }
 
 

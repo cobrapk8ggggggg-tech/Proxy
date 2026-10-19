@@ -1,5 +1,5 @@
 "use strict";
-const CACHE = "aurum-public-v12-glass-1";
+const CACHE = "aurum-public-v12-tools-2";
 const ASSETS = [
   "/offline",
   "/assets/app.css",

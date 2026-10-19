@@ -1,0 +1,55 @@
+{
+  "date": "2026-10-19",
+  "credentials_included": false,
+  "real_account_plan": "free",
+  "iphone_app_run": false,
+  "local_http_roundtrips": [
+    {
+      "policy": "application",
+      "status_code": 200,
+      "external_call_received": true,
+      "stream_no_errors": true,
+      "real_file_output_returned": true,
+      "success": true,
+      "seconds": 19.3
+    },
+    {
+      "policy": "hybrid",
+      "status_code": 200,
+      "external_call_received": true,
+      "stream_no_errors": true,
+      "real_file_output_returned": true,
+      "success": true,
+      "seconds": 10.3
+    }
+  ],
+  "local_http_dual_environment": {
+    "policy": "hybrid",
+    "dual_environment_requested": true,
+    "status_code": 200,
+    "external_call_received": true,
+    "native_tools_observed": true,
+    "stream_no_errors": true,
+    "real_file_output_returned": true,
+    "native_digest_correct": true,
+    "success": true,
+    "seconds": 25.0
+  },
+  "reproducible_probe": {
+    "policy": "hybrid",
+    "real_account": true,
+    "iphone_app_run": false,
+    "external_call_received": true,
+    "native_tools_observed": true,
+    "real_file_output_returned": true,
+    "native_digest_correct": true,
+    "status": "passed"
+  },
+  "application_guard_observed_in_separate_real_attempt": true,
+  "automatic_post_retry": false,
+  "limits": [
+    "Native execution prevention is not guaranteed; the guard detects exposed upstream events.",
+    "No automatic filesystem sharing or general file transfer was tested.",
+    "No native iPhone app execution was performed."
+  ]
+}

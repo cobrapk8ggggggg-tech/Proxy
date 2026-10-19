@@ -183,7 +183,8 @@ def test_tools_nested_json_and_tool_result_followup(env):
     ).json()
     assert result["conversation_id"] == first["conversation_id"]
     assert (
-        "Tool result lookup" in p.sent[-1]["prompt"] and "Found" in p.sent[-1]["prompt"]
+        "APPLICATION TOOL RESULT lookup" in p.sent[-1]["prompt"]
+        and "Found" in p.sent[-1]["prompt"]
     )
 
 

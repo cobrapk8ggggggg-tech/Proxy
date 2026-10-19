@@ -551,6 +551,7 @@ class Providers:
         provider = account["provider"]
         attachments = attachments or []
         if provider == "chatgpt":
+            state.pop("native_tools_used", None)
             try:
                 selected_model, selected_mode, model_info = select_model(
                     account.get("catalog", {}), settings
@@ -665,8 +666,26 @@ class Providers:
                                 "conversation_id", state.get("conversation_id")
                             )
                             m = event.get("message", {})
+                            role = nested(m, "author", "role")
+                            recipient = m.get("recipient")
+                            native_call = role == "tool" or (
+                                role == "assistant"
+                                and recipient not in (None, "", "all")
+                            )
+                            if native_call:
+                                if (
+                                    settings.get("_client_tools")
+                                    and settings.get("tool_environment", "application")
+                                    != "hybrid"
+                                ):
+                                    raise ProviderError(
+                                        "رصدنا طلب أداة داخلية في ChatGPT بدل أدوات التطبيق؛ لم نحتسبه تنفيذًا في بيئتك. "
+                                        "لم نُعِد إرسال الطلب تلقائيًا. ابدأ محادثة جديدة بأدوات التطبيق، أو اختر وضع البيئتين إن كنت تقصد التنفيذ الداخلي."
+                                    )
+                                # Presence only: don't expose internal tool output or reasoning.
+                                state["native_tools_used"] = True
                             if (
-                                nested(m, "author", "role") != "assistant"
+                                role != "assistant"
                                 or m.get("channel", "final") != "final"
                             ):
                                 continue

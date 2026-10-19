@@ -309,3 +309,25 @@ test("home screen installation explains Safari and offline storage excludes acco
   await page.getByRole("link", { name: "إعادة المحاولة", exact: true }).click();
   await expect(page.locator("#app")).toBeVisible();
 });
+
+test("agent environment policy is explicit and persists after saving", async ({
+  page,
+}) => {
+  await navigate(page, "الحسابات والمزوّدون");
+  const card = page
+    .locator(".account-card")
+    .filter({
+      has: page.getByRole("heading", {
+        name: "حساب ChatGPT الأساسي",
+        exact: true,
+      }),
+    });
+  await card.getByRole("button", { name: "إدارة الحساب" }).click();
+  const policy = page.getByRole("combobox", { name: "بيئة أدوات الوكيل" });
+  await expect(policy).toHaveValue("application");
+  await policy.selectOption("hybrid");
+  await page.getByRole("button", { name: "حفظ إعدادات الحساب" }).click();
+  await page.reload();
+  await card.getByRole("button", { name: "إدارة الحساب" }).click();
+  await expect(policy).toHaveValue("hybrid");
+});

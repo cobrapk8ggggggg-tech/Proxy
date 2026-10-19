@@ -46,7 +46,7 @@ def create_app(directory=None, providers=None):
     upstream = providers or Providers()
     engine = Engine(store, upstream)
     app = FastAPI(
-        title="Aurum Proxy", version="12.0.0", docs_url="/api-docs", redoc_url=None
+        title="Aurum Proxy", version="12.1.0", docs_url="/api-docs", redoc_url=None
     )
     app.state.store = store
     app.state.providers = upstream
@@ -188,7 +188,7 @@ def create_app(directory=None, providers=None):
 
     @app.get("/health")
     async def health():
-        return {"status": "ok", "service": "aurum-proxy", "version": "12.0.0"}
+        return {"status": "ok", "service": "aurum-proxy", "version": "12.1.0"}
 
     @app.get("/")
     @app.get("/admin")
@@ -294,7 +294,7 @@ def create_app(directory=None, providers=None):
             "events": events,
             "stats": stats,
             "daily": daily,
-            "version": "12.0.0",
+            "version": "12.1.0",
         }
 
     async def register(data, source, enabled):
@@ -439,6 +439,7 @@ def create_app(directory=None, providers=None):
             "search_enabled",
             "gemini_paragraph_mode",
             "chatgpt_mode",
+            "tool_environment",
             "temperature",
             "max_tokens",
         }
@@ -469,6 +470,11 @@ def create_app(directory=None, providers=None):
         if value["provider"] != "chatgpt" and settings.get("project_id"):
             raise ApiError(400, "المشاريع متاحة لحساب ChatGPT فقط.")
         if value["provider"] == "chatgpt":
+            if settings.get("tool_environment", "application") not in (
+                "application",
+                "hybrid",
+            ):
+                raise ApiError(400, "اختر بيئة أدوات صالحة.")
             try:
                 select_model(value["catalog"], settings)
             except ValueError as exc:
@@ -617,6 +623,7 @@ def create_app(directory=None, providers=None):
         allowed = {
             "model",
             "chatgpt_mode",
+            "tool_environment",
             "project_id",
             "conversation_id",
             "conversation_mode",

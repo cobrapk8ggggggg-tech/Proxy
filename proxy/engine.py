@@ -198,6 +198,8 @@ class Engine:
                 raise ProviderError(str(exc), 400) from None
         messages = body["messages"]
         tools = body.get("tools") or []
+        # Derived from the request, never from account settings or model-generated text.
+        settings["_client_tools"] = bool(tools)
         # Per-request preferences override defaults, while project/account routing stays under dashboard control.
         for key in (
             "temperature",
@@ -241,6 +243,11 @@ class Engine:
                     settings.get("conversation_id", ""),
                     *(
                         [settings["chatgpt_mode"]]
+                        + (
+                            [settings.get("tool_environment", "application")]
+                            if tools
+                            else []
+                        )
                         if account["provider"] == "chatgpt"
                         else []
                     ),
@@ -386,6 +393,7 @@ class Engine:
                 tools,
                 body.get("tool_choice", "auto"),
                 body.get("parallel_tool_calls", True),
+                settings.get("tool_environment", "application"),
             )
             try:
                 if (
@@ -425,12 +433,30 @@ class Engine:
                     body.get("tool_choice", "auto"),
                     body.get("parallel_tool_calls", True),
                 )
+                native_observed = (
+                    bool(state.get("native_tools_used"))
+                    if account["provider"] == "chatgpt"
+                    else False
+                )
+                notice = ""
+                if tools and native_observed:
+                    notice = (
+                        "[رُصد استخدام أداة ChatGPT داخلية؛ استدعاء أدوات التطبيق أدناه ينتظر تنفيذ العميل.]\n\n"
+                        if calls
+                        else "[رُصد استخدام أداة ChatGPT داخلية؛ لم يُرسل استدعاء أداة إلى التطبيق في هذه الجولة.]\n\n"
+                    )
                 message = {
                     "role": "assistant",
-                    "content": None if calls else text,
+                    "content": (notice or None) if calls else notice + text,
                     **({"tool_calls": calls} if calls else {}),
                 }
                 result = completion(body["model"], message, cid)
+                if tools and account["provider"] == "chatgpt":
+                    result["execution"] = {
+                        "policy": settings.get("tool_environment", "application"),
+                        "native_tools_observed": native_observed,
+                        "application_tool_calls": len(calls or []),
+                    }
                 self.store.run(
                     "INSERT INTO conversations VALUES(?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET history_hash=excluded.history_hash,state=excluded.state,updated=excluded.updated",
                     (
