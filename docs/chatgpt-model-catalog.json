@@ -1,0 +1,140 @@
+{
+  "observed_on": "2026-10-19",
+  "default_model": "gpt-6",
+  "models": [
+    {
+      "id": "gpt-5-6",
+      "title": "GPT-5.6 Sol",
+      "mode": "chat",
+      "reasoning_type": "auto",
+      "thinking_efforts": []
+    },
+    {
+      "id": "gpt-5-6-instant",
+      "title": "GPT-5.6 Sol",
+      "mode": "chat",
+      "reasoning_type": "none",
+      "thinking_efforts": []
+    },
+    {
+      "id": "gpt-5-6-thinking",
+      "title": "GPT-5.6 Sol",
+      "mode": "chat",
+      "reasoning_type": "reasoning",
+      "thinking_efforts": ["standard", "extended"]
+    },
+    {
+      "id": "gpt-5.6-sol-wm",
+      "title": "GPT-5.6 Sol",
+      "mode": "work",
+      "reasoning_type": "reasoning",
+      "thinking_efforts": ["standard", "extended"]
+    },
+    {
+      "id": "gpt-6-sol-wm",
+      "title": "GPT-6 Sol",
+      "mode": "work",
+      "reasoning_type": "reasoning",
+      "thinking_efforts": ["standard", "extended"]
+    },
+    {
+      "id": "gpt-6-luna-wm",
+      "title": "GPT-6 Luna",
+      "mode": "work",
+      "reasoning_type": "reasoning",
+      "thinking_efforts": ["standard", "extended"]
+    },
+    {
+      "id": "gpt-6.1-sol-wm",
+      "title": "GPT-6.1 Sol",
+      "mode": "work",
+      "reasoning_type": "reasoning",
+      "thinking_efforts": ["standard", "extended"]
+    },
+    {
+      "id": "gpt-5.6-terra-wm",
+      "title": "GPT-5.6 Terra",
+      "mode": "work",
+      "reasoning_type": "reasoning",
+      "thinking_efforts": ["standard", "extended"]
+    },
+    {
+      "id": "gpt-5.6-luna-wm",
+      "title": "GPT-5.6 Luna",
+      "mode": "work",
+      "reasoning_type": "reasoning",
+      "thinking_efforts": ["standard", "extended"]
+    },
+    {
+      "id": "gpt-6-astra-wm",
+      "title": "GPT-6 Astra",
+      "mode": "work",
+      "reasoning_type": "reasoning",
+      "thinking_efforts": ["standard", "extended"]
+    },
+    {
+      "id": "gpt-5-3-mini",
+      "title": "GPT-5.3 Mini",
+      "mode": "chat",
+      "reasoning_type": "none",
+      "thinking_efforts": []
+    },
+    {
+      "id": "gpt-5-6-mini",
+      "title": "GPT-5.6 Luna",
+      "mode": "chat",
+      "reasoning_type": "none",
+      "thinking_efforts": []
+    },
+    {
+      "id": "gpt-5-6-t-mini",
+      "title": "GPT-5.6 Luna",
+      "mode": "chat",
+      "reasoning_type": "reasoning",
+      "thinking_efforts": []
+    },
+    {
+      "id": "research",
+      "title": "Deep Research",
+      "mode": "research",
+      "reasoning_type": "none",
+      "thinking_efforts": []
+    },
+    {
+      "id": "gpt-6",
+      "title": "GPT-6",
+      "mode": "chat",
+      "reasoning_type": "auto",
+      "thinking_efforts": []
+    },
+    {
+      "id": "gpt-6-instant",
+      "title": "GPT-6",
+      "mode": "chat",
+      "reasoning_type": "none",
+      "thinking_efforts": []
+    },
+    {
+      "id": "gpt-6-thinking",
+      "title": "GPT-6",
+      "mode": "chat",
+      "reasoning_type": "reasoning",
+      "thinking_efforts": ["standard", "extended"]
+    },
+    {
+      "id": "gpt-6-t-mini",
+      "title": "GPT-6",
+      "mode": "chat",
+      "reasoning_type": "reasoning",
+      "thinking_efforts": []
+    },
+    {
+      "id": "gpt-6-mini",
+      "title": "GPT-6",
+      "mode": "chat",
+      "reasoning_type": "none",
+      "thinking_efforts": []
+    }
+  ],
+  "credentials_included": false
+}

@@ -1,10 +1,10 @@
 {
   "name": "aurum-proxy-console",
-  "version": "11.0.0",
+  "version": "12.0.0",
   "private": true,
   "scripts": {
     "test:browser": "playwright test",
-    "check:ui": "node --check static/app.js"
+    "check:ui": "node --check static/app.js && node --check static/pwa.js && node --check static/sw.js"
   },
   "devDependencies": {
     "@playwright/test": "1.64.1"

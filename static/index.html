@@ -2,12 +2,35 @@
 <html lang="ar" dir="rtl">
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width,initial-scale=1" />
-    <meta name="theme-color" content="#08090b" />
+    <meta
+      name="viewport"
+      content="width=device-width,initial-scale=1,viewport-fit=cover"
+    />
+    <meta name="theme-color" content="#08090c" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta
+      name="apple-mobile-web-app-status-bar-style"
+      content="black-translucent"
+    />
+    <meta name="apple-mobile-web-app-title" content="Aurum" />
+    <meta name="application-name" content="Aurum" />
+    <meta
+      name="description"
+      content="مساحتك الخاصة لحسابات الذكاء الاصطناعي والمشاريع والمحادثات."
+    />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link
+      rel="apple-touch-icon"
+      sizes="180x180"
+      href="/assets/apple-touch-icon.png"
+    />
     <title>AURUM · مركز التحكم</title>
     <link rel="icon" href="/assets/mark.svg" type="image/svg+xml" />
     <link rel="stylesheet" href="/assets/app.css" />
+    <link rel="stylesheet" href="/assets/glass.css" />
     <script src="/assets/app.js" defer></script>
+    <script src="/assets/pwa.js" defer></script>
   </head>
   <body>
     <svg class="sprite" aria-hidden="true" xmlns="http://www.w3.org/2000/svg">
@@ -76,6 +99,14 @@
         <symbol id="i-out" viewBox="0 0 24 24">
           <path d="M9 3H4v18h5m4-13 4 4-4 4m-6-4h15" />
         </symbol>
+        <symbol id="i-more" viewBox="0 0 24 24">
+          <circle cx="5" cy="12" r="1.5" />
+          <circle cx="12" cy="12" r="1.5" />
+          <circle cx="19" cy="12" r="1.5" />
+        </symbol>
+        <symbol id="i-download" viewBox="0 0 24 24">
+          <path d="M12 3v12m-5-5 5 5 5-5M4 15v5h16v-5" />
+        </symbol>
         <symbol id="i-x" viewBox="0 0 24 24">
           <path d="m6 6 12 12M6 18 18 6" />
         </symbol>
@@ -141,7 +172,7 @@
             <span class="tiny-dot"></span>
             <div>
               <b>مساحة تحكم خاصة</b
-              ><small class="mono">AURUM ENGINE / V11</small>
+              ><small class="mono">AURUM ENGINE / V12</small>
             </div>
           </div>
           <button id="logout" class="logout">
@@ -168,18 +199,69 @@
               aria-label="تسجيل الخروج"
             >
               <svg><use href="#i-out" /></svg></button
+            ><button
+              class="icon-button install-button"
+              data-action="install-app"
+              aria-label="إضافة إلى الشاشة الرئيسية"
+              title="إضافة إلى الشاشة الرئيسية"
+            >
+              <svg><use href="#i-download" /></svg></button
             ><span class="avatar" title="مسؤول المساحة">A</span>
           </div>
         </header>
         <main id="main" tabindex="-1"></main>
+        <nav id="mobile-nav" aria-label="تبويبات التطبيق"></nav>
         <footer class="main-footer">
           <span class="mono">YOUR ACCOUNTS. YOUR RULES.</span
           ><span>اتصال مباشر · تحكم مستقل</span
-          ><span class="mono">AURUM / 11.0</span>
+          ><span class="mono">AURUM / 12.0</span>
         </footer>
       </div>
     </div>
     <dialog id="modal"><div id="modal-content"></div></dialog>
+    <dialog id="app-menu">
+      <div class="sheet-grabber"></div>
+      <div class="menu-head">
+        <h2>مساحتك</h2>
+        <button
+          class="icon-button"
+          data-action="close-menu"
+          aria-label="إغلاق المزيد"
+        >
+          <svg><use href="#i-x" /></svg>
+        </button>
+      </div>
+      <div id="menu-links"></div>
+    </dialog>
+    <dialog id="install-dialog">
+      <div class="sheet-grabber"></div>
+      <div class="menu-head">
+        <h2>أضف Aurum إلى شاشتك</h2>
+        <button
+          class="icon-button"
+          id="close-install"
+          aria-label="إغلاق تعليمات التثبيت"
+        >
+          <svg><use href="#i-x" /></svg>
+        </button>
+      </div>
+      <img
+        src="/assets/icon-192.png"
+        width="72"
+        height="72"
+        alt="أيقونة Aurum"
+        class="install-icon"
+      />
+      <p id="install-description"></p>
+      <ol id="install-steps"></ol>
+      <p class="field-hint">
+        يفتح في نافذة مستقلة، مع بقاء بياناتك في حسابك على الخادم.
+      </p>
+    </dialog>
+    <div id="update-banner" hidden>
+      <span>تحديث جديد لتطبيقك</span
+      ><button class="button gold" id="apply-update">تحديث الآن</button>
+    </div>
     <div id="toast" role="status" aria-live="polite" hidden></div>
   </body>
 </html>

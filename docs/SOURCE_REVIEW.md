@@ -29,6 +29,7 @@ SHA-256 للأصل: `4ac6f98bf2589df89b81c9a304676e82bb772cd3b50d7179fdc52065cb9
 | `proxy/store.py` | SQLite وخزنة الحسابات المشفرة والمفاتيح والحالة |
 | `proxy/engine.py` | ربط المحادثات والأقفال واختيار المسار ومعالجة المرفقات |
 | `proxy/protocol.py` | تحويل Chat وResponses وSSE والأدوات |
+| `proxy/chatgpt_models.py` | فئات نماذج الحساب وAuto وفصل الدردشة عن العمل والبحث |
 | `proxy/translation.py` | الوضع الاختياري لترجمة فقرات Gemini |
 | `proxy/app.py` | API العميل والإدارة والمصادقة والحدود |
 | `static/` | اللوحة العربية دون مكتبات واجهة خارجية أو build مطلوب |

@@ -7,6 +7,7 @@ import uuid
 from contextlib import asynccontextmanager
 from .protocol import canonical, prompt_for, parse_tools, completion, content_text
 from .providers import ProviderError
+from .chatgpt_models import select_model
 from jsonschema import Draft202012Validator, SchemaError
 
 
@@ -188,6 +189,13 @@ class Engine:
         self.validate(body)
         route, account = self.resolve(body.get("model", ""), client)
         settings = {**account["settings"], **route["config"]}
+        if account["provider"] == "chatgpt":
+            try:
+                _, settings["chatgpt_mode"], _ = select_model(
+                    account["catalog"], settings
+                )
+            except ValueError as exc:
+                raise ProviderError(str(exc), 400) from None
         messages = body["messages"]
         tools = body.get("tools") or []
         # Per-request preferences override defaults, while project/account routing stays under dashboard control.
@@ -231,6 +239,11 @@ class Engine:
                     settings.get("project_id", ""),
                     settings.get("conversation_mode"),
                     settings.get("conversation_id", ""),
+                    *(
+                        [settings["chatgpt_mode"]]
+                        if account["provider"] == "chatgpt"
+                        else []
+                    ),
                 ]
             ).encode()
         ).hexdigest()

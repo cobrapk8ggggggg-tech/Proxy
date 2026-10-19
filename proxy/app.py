@@ -20,6 +20,7 @@ from fastapi.staticfiles import StaticFiles
 from .store import Store
 from .providers import Providers, ProviderError
 from .engine import Engine
+from .chatgpt_models import select_model
 from .protocol import (
     as_response,
     response_messages,
@@ -45,7 +46,7 @@ def create_app(directory=None, providers=None):
     upstream = providers or Providers()
     engine = Engine(store, upstream)
     app = FastAPI(
-        title="Aurum Proxy", version="11.0.0", docs_url="/api-docs", redoc_url=None
+        title="Aurum Proxy", version="12.0.0", docs_url="/api-docs", redoc_url=None
     )
     app.state.store = store
     app.state.providers = upstream
@@ -187,12 +188,30 @@ def create_app(directory=None, providers=None):
 
     @app.get("/health")
     async def health():
-        return {"status": "ok", "service": "aurum-proxy", "version": "11.0.0"}
+        return {"status": "ok", "service": "aurum-proxy", "version": "12.0.0"}
 
     @app.get("/")
     @app.get("/admin")
     async def dashboard():
         return FileResponse(STATIC / "index.html")
+
+    @app.get("/manifest.webmanifest")
+    async def manifest():
+        return FileResponse(
+            STATIC / "manifest.webmanifest", media_type="application/manifest+json"
+        )
+
+    @app.get("/sw.js")
+    async def service_worker():
+        return FileResponse(
+            STATIC / "sw.js",
+            media_type="application/javascript",
+            headers={"Service-Worker-Allowed": "/"},
+        )
+
+    @app.get("/offline")
+    async def offline():
+        return FileResponse(STATIC / "offline.html")
 
     app.mount("/assets", StaticFiles(directory=STATIC), name="assets")
 
@@ -275,7 +294,7 @@ def create_app(directory=None, providers=None):
             "events": events,
             "stats": stats,
             "daily": daily,
-            "version": "11.0.0",
+            "version": "12.0.0",
         }
 
     async def register(data, source, enabled):
@@ -319,7 +338,9 @@ def create_app(directory=None, providers=None):
         if catalog.get("models") and not any(
             m["id"] == settings.get("model") for m in catalog["models"]
         ):
-            settings["model"] = catalog["models"][0]["id"]
+            settings["model"] = (
+                catalog.get("default_model") or catalog["models"][0]["id"]
+            )
             store.update_account(aid, settings=settings)
         existing = [r for r in store.routes() if r["account_id"] == aid]
         if not existing and catalog.get("models"):
@@ -350,7 +371,55 @@ def create_app(directory=None, providers=None):
                 store.set_route("qwen-vision", aid, {})
             for model in catalog["models"]:
                 slug = re.sub(r"[^A-Za-z0-9_.-]", "-", model["id"])[:80]
-                store.set_route(base + "/" + slug, aid, {"model": model["id"]})
+                store.set_route(
+                    base + "/" + slug,
+                    aid,
+                    {
+                        "model": model["id"],
+                        **(
+                            {"chatgpt_mode": model.get("mode", "chat")}
+                            if value["provider"] == "chatgpt"
+                            else {}
+                        ),
+                    },
+                )
+        if value["provider"] == "chatgpt":
+            prefix = next(
+                (
+                    r["id"]
+                    for r in store.routes()
+                    if r["account_id"] == aid and "/" not in r["id"] and not r["config"]
+                ),
+                "gpt-" + aid[:6],
+            )
+            auto_alias = prefix + "/auto"
+            if not any(r["id"] == auto_alias for r in store.routes()):
+                store.set_route(
+                    auto_alias, aid, {"model": "auto", "chatgpt_mode": "chat"}
+                )
+            for route in store.routes():
+                entry = next(
+                    (
+                        m
+                        for m in catalog.get("models", [])
+                        if m["id"] == route["config"].get("model")
+                    ),
+                    None,
+                )
+                if (
+                    route["account_id"] == aid
+                    and entry
+                    and "chatgpt_mode" not in route["config"]
+                    and route["id"].endswith(
+                        "/" + re.sub(r"[^A-Za-z0-9_.-]", "-", entry["id"])[:80]
+                    )
+                ):
+                    store.set_route(
+                        route["id"],
+                        aid,
+                        {**route["config"], "chatgpt_mode": entry.get("mode", "chat")},
+                        bool(route["enabled"]),
+                    )
         return catalog
 
     @app.patch("/admin/api/accounts/{aid}")
@@ -369,6 +438,7 @@ def create_app(directory=None, providers=None):
             "thinking_enabled",
             "search_enabled",
             "gemini_paragraph_mode",
+            "chatgpt_mode",
             "temperature",
             "max_tokens",
         }
@@ -398,6 +468,11 @@ def create_app(directory=None, providers=None):
             raise ApiError(400, "اختر محادثة ثابتة أولًا.")
         if value["provider"] != "chatgpt" and settings.get("project_id"):
             raise ApiError(400, "المشاريع متاحة لحساب ChatGPT فقط.")
+        if value["provider"] == "chatgpt":
+            try:
+                select_model(value["catalog"], settings)
+            except ValueError as exc:
+                raise ApiError(400, str(exc)) from None
         for key, low, high in [("temperature", 0, 2), ("max_tokens", 256, 131072)]:
             v = settings.get(key, 0.7 if key == "temperature" else 16384)
             if (
@@ -444,6 +519,7 @@ def create_app(directory=None, providers=None):
             "project_id": "",
             "conversation_id": "",
             "conversation_mode": "automatic",
+            "chatgpt_mode": "chat",
             "model": "",
         }
         store.update_account(aid, settings=settings)
@@ -457,6 +533,7 @@ def create_app(directory=None, providers=None):
                         "project_id": "",
                         "conversation_id": "",
                         "conversation_mode": "automatic",
+                        "chatgpt_mode": "chat",
                         "model": "",
                     },
                     bool(route["enabled"]),
@@ -501,7 +578,11 @@ def create_app(directory=None, providers=None):
         data = await body(request)
         settings = {
             **value["settings"],
-            **{k: v for k, v in data.items() if k in ("project_id", "model")},
+            **{
+                k: v
+                for k, v in data.items()
+                if k in ("project_id", "model", "chatgpt_mode", "reasoning_effort")
+            },
         }
         validate_settings(value, settings)
         state = {}
@@ -535,6 +616,7 @@ def create_app(directory=None, providers=None):
             raise ApiError(400, "إعدادات النموذج غير صالحة.")
         allowed = {
             "model",
+            "chatgpt_mode",
             "project_id",
             "conversation_id",
             "conversation_mode",
@@ -603,6 +685,30 @@ def create_app(directory=None, providers=None):
                     "object": "model",
                     "created": int(value["created"]),
                     "owned_by": value["provider"],
+                    "name": next(
+                        (
+                            m.get("name", m["id"])
+                            for m in value["catalog"].get("models", [])
+                            if m["id"]
+                            == route["config"].get(
+                                "model", value["settings"].get("model")
+                            )
+                        ),
+                        route["id"],
+                    ),
+                    "chatgpt_mode": route["config"].get("chatgpt_mode")
+                    or value["settings"].get("chatgpt_mode")
+                    or next(
+                        (
+                            m.get("mode", "chat")
+                            for m in value["catalog"].get("models", [])
+                            if m["id"]
+                            == route["config"].get(
+                                "model", value["settings"].get("model")
+                            )
+                        ),
+                        "chat",
+                    ),
                     "supports_tools": True,
                     "supports_vision": value["provider"]
                     in ("chatgpt", "gemini", "qwen"),

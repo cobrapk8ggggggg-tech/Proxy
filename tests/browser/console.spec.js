@@ -1,4 +1,10 @@
 const { test, expect } = require("@playwright/test");
+async function navigate(page, name) {
+  const link = page.getByRole("link", { name, exact: true });
+  if (!(await link.isVisible()))
+    await page.getByRole("button", { name: "المزيد", exact: true }).click();
+  await link.click();
+}
 test.beforeEach(async ({ page, request }) => {
   await request.post("/__reset");
   await page.goto("/");
@@ -25,7 +31,7 @@ test("overview, responsive layout and every navigation section loads without bro
     "الربط والتكامل",
     "نظرة عامة",
   ]) {
-    await page.getByRole("link", { name, exact: true }).click();
+    await navigate(page, name);
     await expect(page.locator("main h1")).toBeVisible();
     expect(
       await page.evaluate(
@@ -37,14 +43,16 @@ test("overview, responsive layout and every navigation section loads without bro
     path: `test-results/aurum-${test.info().project.name}.png`,
     fullPage: true,
   });
+  await page.screenshot({
+    path: `test-results/aurum-viewport-${test.info().project.name}.png`,
+    fullPage: false,
+  });
   expect(errors).toEqual([]);
 });
 test("project selection fetches its conversations and saved account settings survive reload", async ({
   page,
 }) => {
-  await page
-    .getByRole("link", { name: "الحسابات والمزوّدون", exact: true })
-    .click();
+  await navigate(page, "الحسابات والمزوّدون");
   const card = page.locator(".account-card").filter({
     has: page.getByRole("heading", {
       name: "حساب ChatGPT الأساسي",
@@ -78,9 +86,7 @@ test("project selection fetches its conversations and saved account settings sur
 test("Gemini paragraph switch can be disabled and persisted while GPT has no switch", async ({
   page,
 }) => {
-  await page
-    .getByRole("link", { name: "الحسابات والمزوّدون", exact: true })
-    .click();
+  await navigate(page, "الحسابات والمزوّدون");
   await page
     .locator(".account-card")
     .filter({ has: page.getByRole("heading", { name: "حساب Gemini الشخصي" }) })
@@ -118,7 +124,7 @@ test("create client key once and use it for an actual OpenAI-format request", as
   page,
   request,
 }) => {
-  await page.getByRole("link", { name: "مفاتيح الوصول", exact: true }).click();
+  await navigate(page, "مفاتيح الوصول");
   await page.getByRole("button", { name: "إنشاء مفتاح وصول" }).click();
   await page
     .getByRole("button", { name: "إنشاء المفتاح", exact: true })
@@ -147,9 +153,7 @@ test("create client key once and use it for an actual OpenAI-format request", as
 test("create project model route, then test it in the real playground", async ({
   page,
 }) => {
-  await page
-    .getByRole("link", { name: "النماذج والمسارات", exact: true })
-    .click();
+  await navigate(page, "النماذج والمسارات");
   await page.getByRole("button", { name: "إضافة مسار نموذج" }).click();
   await page
     .getByRole("textbox", { name: "اسم النموذج في التطبيق" })
@@ -162,14 +166,14 @@ test("create project model route, then test it in the real playground", async ({
     .selectOption({ label: "Novel project" });
   await page.getByRole("button", { name: "حفظ مسار النموذج" }).click();
   await expect(page.locator("table")).toContainText("novel-gpt");
-  await page.getByRole("link", { name: "مختبر المحادثة", exact: true }).click();
+  await navigate(page, "مختبر المحادثة");
   await page.locator("#play-model").selectOption("novel-gpt");
   await page
     .getByRole("textbox", { name: "رسالة الاختبار" })
     .fill("Test my project conversation");
   await page.getByRole("button", { name: "إرسال", exact: true }).click();
   await expect(page.locator(".chat-bubble").last()).toContainText("وصل الرد");
-  await page.getByRole("link", { name: "المحادثات", exact: true }).click();
+  await navigate(page, "المحادثات");
   await expect(page.locator("table")).toContainText("حساب ChatGPT الأساسي");
 });
 
@@ -177,9 +181,7 @@ test("credential replacement keeps the account and reconnects without exposing t
   page,
   request,
 }) => {
-  await page
-    .getByRole("link", { name: "الحسابات والمزوّدون", exact: true })
-    .click();
+  await navigate(page, "الحسابات والمزوّدون");
   await page
     .locator(".account-card")
     .filter({
@@ -209,4 +211,101 @@ test("credential replacement keeps the account and reconnects without exposing t
   await expect(
     page.getByRole("heading", { name: "حساب ChatGPT الأساسي", exact: true }),
   ).toBeVisible();
+});
+
+test("ChatGPT clearly separates normal Auto, Thinking, Work and Research", async ({
+  page,
+}) => {
+  await navigate(page, "الحسابات والمزوّدون");
+  const card = page.locator(".account-card").filter({
+    has: page.getByRole("heading", {
+      name: "حساب ChatGPT الأساسي",
+      exact: true,
+    }),
+  });
+  await card.getByRole("button", { name: "إدارة الحساب" }).click();
+  const mode = page.getByRole("combobox", { name: "وضع ChatGPT", exact: true });
+  await expect(mode).toHaveValue("chat");
+  const models = page.locator("select[name=model]");
+  await expect(models.locator("option[value=auto]")).toContainText("Auto");
+  await expect(models.locator("option[value=test-work]")).toHaveCount(0);
+  await models.selectOption("test-pro");
+  await expect(
+    page.locator("select[name=reasoning_effort] option[value=high]"),
+  ).toBeAttached();
+  await mode.selectOption("work");
+  await expect(models).toHaveValue("test-work");
+  await expect(models.locator("option[value=auto]")).toHaveCount(0);
+  await expect(
+    page.locator("select[name=reasoning_effort] option[value=extended]"),
+  ).toBeAttached();
+  await page.getByRole("button", { name: "حفظ إعدادات الحساب" }).click();
+  await card.getByRole("button", { name: "إدارة الحساب" }).click();
+  await expect(mode).toHaveValue("work");
+  await mode.selectOption("chat");
+  await expect(models).toHaveValue("auto");
+  await page.screenshot({
+    path: `test-results/chatgpt-controls-${test.info().project.name}.png`,
+    fullPage: false,
+  });
+  await expect(models.locator("option[value=test-work]")).toHaveCount(0);
+  await page.getByRole("button", { name: "حفظ إعدادات الحساب" }).click();
+});
+
+test("glass navigation remains usable at small phone and tablet sizes", async ({
+  page,
+}) => {
+  for (const width of [320, 768]) {
+    await page.setViewportSize({ width, height: 850 });
+    await navigate(page, "النماذج والمسارات");
+    expect(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth <= innerWidth + 1,
+      ),
+    ).toBe(true);
+    await expect(page.locator("#mobile-nav")).toBeVisible();
+    await page.getByRole("button", { name: "المزيد", exact: true }).click();
+    await expect(page.locator("#app-menu")).toBeVisible();
+    await page
+      .getByRole("link", { name: "مفاتيح الوصول", exact: true })
+      .click();
+    await expect(page.locator("#app-menu")).not.toBeVisible();
+    await expect(page.locator("main h1")).toContainText("مفاتيح");
+  }
+});
+
+test("home screen installation explains Safari and offline storage excludes account data", async ({
+  page,
+  context,
+}) => {
+  await page.getByRole("button", { name: "إضافة إلى الشاشة الرئيسية" }).click();
+  const dialog = page.locator("#install-dialog");
+  // Desktop Chromium may offer its native install prompt instead of the help sheet.
+  if (await dialog.isVisible()) {
+    await expect(page.locator("#install-steps li")).toHaveCount(2);
+    await page.getByRole("button", { name: "إغلاق تعليمات التثبيت" }).click();
+  }
+  await page.evaluate(() => navigator.serviceWorker.ready);
+  await expect
+    .poll(() => page.evaluate(() => !!navigator.serviceWorker.controller))
+    .toBe(true);
+  const paths = await page.evaluate(async () => {
+    const result = [];
+    for (const name of await caches.keys())
+      for (const req of await (await caches.open(name)).keys())
+        result.push(new URL(req.url).pathname);
+    return result;
+  });
+  expect(paths).toContain("/offline");
+  expect(
+    paths.some((p) => p.startsWith("/admin/api/") || p.startsWith("/v1/")),
+  ).toBe(false);
+  await context.setOffline(true);
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await expect(
+    page.getByRole("heading", { name: "نلتقي عند عودة الاتصال." }),
+  ).toBeVisible();
+  await context.setOffline(false);
+  await page.getByRole("link", { name: "إعادة المحاولة", exact: true }).click();
+  await expect(page.locator("#app")).toBeVisible();
 });

@@ -12,13 +12,50 @@ class FakeProviders:
     async def discover(self, a):
         return {
             "models": [
-                {"id": "auto", "name": "Auto"},
+                {
+                    "id": "auto",
+                    "name": "Auto",
+                    "mode": "chat",
+                    "lane": "auto",
+                    "reasoning_efforts": [],
+                },
                 {
                     "id": "test-pro",
                     "name": "Test Pro",
                     "reasoning_efforts": ["low", "high"],
+                    "mode": "chat",
+                    "lane": "thinking",
                 },
-            ],
+            ]
+            + (
+                [
+                    {
+                        "id": "test-work",
+                        "name": "Test Work · وضع العمل",
+                        "mode": "work",
+                        "lane": "thinking",
+                        "reasoning_efforts": ["standard", "extended"],
+                    },
+                    {
+                        "id": "research",
+                        "name": "Research",
+                        "mode": "research",
+                        "reasoning_efforts": [],
+                    },
+                ]
+                if a["provider"] == "chatgpt"
+                else []
+            ),
+            "chatgpt_modes": (
+                [
+                    {"id": "chat", "name": "دردشة عادية"},
+                    {"id": "work", "name": "وضع العمل"},
+                    {"id": "research", "name": "بحث معمّق"},
+                ]
+                if a["provider"] == "chatgpt"
+                else []
+            ),
+            "auto_model": "test-pro",
             "projects": (
                 [{"id": "novel-project", "name": "Novel project"}]
                 if a["provider"] == "chatgpt"

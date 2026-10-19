@@ -40,7 +40,8 @@ let state = null,
   chatCursor = null,
   chatOffset = 0,
   projectCursor = null,
-  requestSeq = 0;
+  requestSeq = 0,
+  lastRenderedPage = "";
 function logo(provider) {
   return `<span class="provider-logo ${esc(provider)}" aria-hidden="true">${esc(providers[provider]?.mark || "A")}</span>`;
 }
@@ -112,6 +113,24 @@ function renderPage() {
         `<a class="nav-item ${page === id ? "active" : ""}" href="#${id}" aria-label="${title}" ${page === id ? 'aria-current="page"' : ""}>${icon(ico)}<span>${title}</span>${id === "accounts" ? `<b class="count">${String(state.accounts.length).padStart(2, "0")}</b>` : ""}</a>`,
     )
     .join("");
+  $("#mobile-nav").innerHTML =
+    pages
+      .filter(([id]) =>
+        ["overview", "accounts", "models", "playground"].includes(id),
+      )
+      .map(
+        ([id, title, ico]) =>
+          `<a href="#${id}" aria-label="${title}" class="tab-item ${page === id ? "active" : ""}" ${page === id ? 'aria-current="page"' : ""}>${icon(ico)}<span>${{ overview: "الرئيسية", accounts: "الحسابات", models: "النماذج", playground: "المختبر" }[id]}</span></a>`,
+      )
+      .join("") +
+    `<button class="tab-item ${["sessions", "keys", "activity", "connect"].includes(page) ? "active" : ""}" data-action="open-menu" aria-label="المزيد">${icon("more")}<span>المزيد</span></button>`;
+  $("#menu-links").innerHTML = pages
+    .filter(([id]) => ["sessions", "keys", "activity", "connect"].includes(id))
+    .map(
+      ([id, title, ico]) =>
+        `<a href="#${id}" class="menu-link">${icon(ico)}<span>${title}</span>${icon("arrow")}</a>`,
+    )
+    .join("");
   $("#main").innerHTML = {
     overview: overview,
     accounts: accountsPage,
@@ -122,6 +141,34 @@ function renderPage() {
     activity: activityPage,
     connect: connectPage,
   }[page]();
+  $("#main")
+    .querySelectorAll("table")
+    .forEach((table) => {
+      const labels = [...table.querySelectorAll("thead th")].map(
+        (th) => th.textContent,
+      );
+      table
+        .querySelectorAll("tbody tr")
+        .forEach((row) =>
+          [...row.cells].forEach(
+            (cell, i) => (cell.dataset.label = labels[i] || ""),
+          ),
+        );
+    });
+  if (lastRenderedPage !== page)
+    window.scrollTo({ top: 0, behavior: "instant" });
+  if (
+    lastRenderedPage !== page &&
+    !matchMedia("(prefers-reduced-motion: reduce)").matches
+  )
+    $("#main").animate(
+      [
+        { opacity: 0, transform: "translateY(9px)" },
+        { opacity: 1, transform: "translateY(0)" },
+      ],
+      { duration: 280, easing: "cubic-bezier(.22,.8,.32,1)" },
+    );
+  lastRenderedPage = page;
 }
 function overview() {
   const connected = state.accounts.filter(
@@ -220,9 +267,18 @@ function modeLabel(mode) {
     }[mode] || "تلقائي"
   );
 }
+function routeModeLabel(r) {
+  const a = state.accounts.find((a) => a.id === r.account_id),
+    m = (a?.catalog.models || []).find(
+      (m) => m.id === (r.config.model || a.settings.model || "auto"),
+    );
+  return { work: "وضع العمل", research: "بحث معمّق", chat: "دردشة عادية" }[
+    r.config.chatgpt_mode || m?.mode || a?.settings.chatgpt_mode || "chat"
+  ];
+}
 function routesTable(routes) {
   return routes.length
-    ? `<div class="table-wrap"><table><thead><tr><th>النموذج الظاهر في التطبيق</th><th>الحساب</th><th>المسار</th><th>الحالة</th><th>التحكم</th></tr></thead><tbody>${routes.map((r) => `<tr><td class="model-name mono" dir="ltr">${esc(r.id)}</td><td>${esc(accountName(r.account_id))}</td><td>${esc({ translation: "ترجمة فصول", glossary: "مصطلحات", review: "مراجعة" }[r.config.task] || "محادثة ووكيل")}</td><td><span class="badge ${r.enabled ? "" : "disabled"}">${r.enabled ? "نشط" : "معطّل"}</span></td><td><div class="row-actions"><button class="button ghost" data-action="edit-route" data-id="${esc(r.id)}">التفاصيل</button></div></td></tr>`).join("")}</tbody></table></div>`
+    ? `<div class="table-wrap"><table><thead><tr><th>النموذج الظاهر في التطبيق</th><th>الحساب</th><th>المسار</th><th>الحالة</th><th>التحكم</th></tr></thead><tbody>${routes.map((r) => `<tr><td class="model-name mono" dir="ltr">${esc(r.id)}</td><td>${esc(accountName(r.account_id))}</td><td>${esc({ translation: "ترجمة فصول", glossary: "مصطلحات", review: "مراجعة" }[r.config.task] || routeModeLabel(r))}</td><td><span class="badge ${r.enabled ? "" : "disabled"}">${r.enabled ? "نشط" : "معطّل"}</span></td><td><div class="row-actions"><button class="button ghost" data-action="edit-route" data-id="${esc(r.id)}">التفاصيل</button></div></td></tr>`).join("")}</tbody></table></div>`
     : empty(
         "لا توجد مسارات بعد",
         "اربط حسابًا ليظهر نموذجه الافتراضي، ثم خصّص مسارات مستقلة لكل مهمة.",
@@ -355,21 +411,75 @@ function addAccount() {
 function accountSettings(a, isRoute = false, config = {}) {
   const s = { ...a.settings, ...config };
   const catalog = a.catalog;
-  return `<div class="form-grid"><label>النموذج الفعلي<select name="model"><option value="">اختيار الحساب الافتراضي</option>${options(catalog.models || [], s.model)}</select></label><label>سلوك المحادثة<select name="conversation_mode">${["automatic", "fixed", "per_request"].map((mode) => `<option value="${mode}" ${s.conversation_mode === mode ? "selected" : ""}>${modeLabel(mode)}</option>`).join("")}</select></label>${a.provider === "chatgpt" ? `<label class="full">مشروع ChatGPT<select name="project_id"><option value="">خارج المشاريع</option>${s.project_id && !(catalog.projects || []).some((p) => p.id === s.project_id) ? `<option value="${esc(s.project_id)}" selected>المشروع المحفوظ</option>` : ""}${options(catalog.projects || [], s.project_id)}</select></label><div class="full"><button class="button ghost" type="button" data-action="more-projects">تحديث / مزيد من المشاريع</button></div>` : ""}<label class="full">المحادثة المختارة (عند اختيار متابعة محادثة)<select name="conversation_id"><option value="">اختر محادثة من الحساب</option>${s.conversation_id ? `<option value="${esc(s.conversation_id)}" selected>المحادثة المحفوظة</option>` : ""}${options(catalog.chats || [], s.conversation_id, "id", "title")}</select><span class="field-hint">اختيار مشروع يجلب محادثاته تلقائيًا. إنشاء محادثة تطبيق جديدة يستعمل المشروع في الوضع التلقائي.</span></label><div class="full row-actions"><button class="button ghost" type="button" data-action="load-chats">جلب المحادثات</button><button class="button ghost" type="button" data-action="more-chats">مزيد من المحادثات</button><button class="button ghost" type="button" data-action="new-remote-chat">إنشاء محادثة</button></div></div>${
+  const selectedModel = (catalog.models || []).find((m) => m.id === s.model);
+  const gptMode = s.chatgpt_mode || selectedModel?.mode || "chat";
+  return `${a.provider === "chatgpt" ? `<div class="mode-card"><div class="mode-card-heading">${icon("chat")}<div><b>نوع محادثة ChatGPT</b><small>نوع المحادثة مستقل عن المشروع ومكان حفظها.</small></div></div><label>وضع ChatGPT<select name="chatgpt_mode">${(catalog.chatgpt_modes || [{ id: "chat", name: "دردشة عادية" }]).map((m) => `<option value="${esc(m.id)}" ${gptMode === m.id ? "selected" : ""}>${esc(m.name)}</option>`).join("")}</select></label><p class="field-hint">الدردشة العادية تشمل Auto وInstant وThinking. نماذج وضع العمل تظهر فقط عند اختيار وضع العمل.</p></div>` : ""}<div class="form-grid"><label>النموذج الفعلي<select name="model">${a.provider === "chatgpt" ? gptModelOptions(a, s.model, gptMode) : `<option value="">اختيار الحساب الافتراضي</option>${options(catalog.models || [], s.model)}`}</select><span class="field-hint" id="model-explainer">${a.provider === "chatgpt" ? esc(gptModelNote(a, s.model, gptMode)) : ""}</span></label><label>سلوك المحادثة<select name="conversation_mode">${["automatic", "fixed", "per_request"].map((mode) => `<option value="${mode}" ${s.conversation_mode === mode ? "selected" : ""}>${modeLabel(mode)}</option>`).join("")}</select></label>${a.provider === "chatgpt" ? `<label class="full">مشروع ChatGPT<select name="project_id"><option value="">خارج المشاريع</option>${s.project_id && !(catalog.projects || []).some((p) => p.id === s.project_id) ? `<option value="${esc(s.project_id)}" selected>المشروع المحفوظ</option>` : ""}${options(catalog.projects || [], s.project_id)}</select></label><div class="full"><button class="button ghost" type="button" data-action="more-projects">تحديث / مزيد من المشاريع</button></div>` : ""}<label class="full">المحادثة المختارة (عند اختيار متابعة محادثة)<select name="conversation_id"><option value="">اختر محادثة من الحساب</option>${s.conversation_id ? `<option value="${esc(s.conversation_id)}" selected>المحادثة المحفوظة</option>` : ""}${options(catalog.chats || [], s.conversation_id, "id", "title")}</select><span class="field-hint">اختيار مشروع يجلب محادثاته تلقائيًا. إنشاء محادثة تطبيق جديدة يستعمل المشروع في الوضع التلقائي.</span></label><div class="full row-actions"><button class="button ghost" type="button" data-action="load-chats">جلب المحادثات</button><button class="button ghost" type="button" data-action="more-chats">مزيد من المحادثات</button><button class="button ghost" type="button" data-action="new-remote-chat">إنشاء محادثة</button></div></div>${
     a.provider === "chatgpt"
-      ? `<label class="section-title">مستوى التفكير<select name="reasoning_effort"><option value="auto">اختيار الحساب التلقائي</option>${[
-          ...new Set(
-            (catalog.models || []).flatMap((m) => m.reasoning_efforts || []),
-          ),
-        ]
-          .filter((x) => typeof x === "string")
-          .map(
-            (x) =>
-              `<option value="${esc(x)}" ${s.reasoning_effort === x ? "selected" : ""}>${esc(x)}</option>`,
-          )
-          .join("")}</select></label>`
+      ? `<label class="section-title">مستوى التفكير<select name="reasoning_effort">${gptEffortOptions(a, s.model, s.reasoning_effort)}</select><span class="field-hint">تظهر المستويات التي يدعمها النموذج المحدد فقط.</span></label>`
       : ""
   }${["deepseek", "qwen"].includes(a.provider) ? `<div class="form-grid section-title"><label class="toggle"><input type="checkbox" name="thinking_enabled" ${s.thinking_enabled ? "checked" : ""}><span>تفعيل التفكير</span></label><label class="toggle"><input type="checkbox" name="search_enabled" ${s.search_enabled ? "checked" : ""}><span>تفعيل البحث</span></label></div>` : ""}${a.provider === "gemini" && !isRoute ? `<label class="toggle section-title"><input type="checkbox" name="gemini_paragraph_mode" ${s.gemini_paragraph_mode ? "checked" : ""}><span>تقسيم الفصل وفحص الفقرات<small>اختياري لـGemini فقط، ويعمل على مسار نوعه «ترجمة فصول». المحادثة العادية والأدوات ترسل النص كاملًا دائمًا.</small></span></label>` : ""}<details><summary>ضبط التوليد المتقدم</summary><div class="form-grid"><label>Temperature<input type="number" name="temperature" min="0" max="2" step="0.1" value="${s.temperature ?? 0.7}" ${a.provider !== "deepseek" ? "disabled" : ""}></label><label>الحد الأقصى للتوكنات<input type="number" name="max_tokens" min="256" max="131072" step="1" value="${s.max_tokens || 16384}" ${a.provider !== "deepseek" ? "disabled" : ""}></label></div><p class="field-hint">هذه القيم تمرر لخدمة DeepSeek Telegram. بروتوكولا ChatGPT وGemini لا يثبتان دعم هذه المعاملات؛ لا نعرضها كقدرات قابلة للتغيير فيهما.</p></details>`;
+}
+function gptModelOptions(a, selected, mode) {
+  const values = (a.catalog.models || []).filter(
+    (m) => (m.mode || "chat") === mode,
+  );
+  return (
+    `<option value="">${mode === "chat" ? "Auto · اختيار الحساب التلقائي" : "اختيار النموذج الافتراضي لهذا الوضع"}</option>` +
+    values
+      .map(
+        (m) =>
+          `<option value="${esc(m.id)}" ${m.id === selected ? "selected" : ""}>${esc(m.name)}${m.id === "auto" ? "" : ` — ${esc(m.id)}`}</option>`,
+      )
+      .join("")
+  );
+}
+function gptModelNote(a, id, mode) {
+  const m = (a.catalog.models || []).find((m) => m.id === id);
+  return mode === "work"
+    ? "وضع العمل: يستخدم معرف نموذج العمل كما يعلنه حسابك."
+    : mode === "research"
+      ? "بحث معمّق: قد يستغرق وقتًا أطول من الدردشة."
+      : !id || id === "auto"
+        ? `Auto يترك الاختيار لـChatGPT. نموذج الحساب الحالي: ${a.catalog.auto_model || "تلقائي"}.`
+        : `دردشة عادية · ${m?.lane === "thinking" ? "تفكير" : m?.lane === "instant" ? "رد سريع" : m?.lane === "auto" ? "اختيار تلقائي" : "نموذج الحساب"}`;
+}
+function gptEffortOptions(a, id, effort = "auto") {
+  const model = (a.catalog.models || []).find((m) => m.id === (id || "auto"));
+  return (
+    `<option value="auto">تلقائي للنموذج</option>` +
+    (model?.reasoning_efforts || [])
+      .map(
+        (x) =>
+          `<option value="${esc(x)}" ${effort === x ? "selected" : ""}>${esc({ standard: "قياسي · Standard", extended: "ممتد · Extended" }[x] || x)}</option>`,
+      )
+      .join("")
+  );
+}
+function updateGptControls(modeChanged = false) {
+  const form = $("#modal form"),
+    a = state.accounts.find((a) => a.id === activeDialogAccount);
+  if (a?.provider !== "chatgpt") return;
+  const mode = form.elements.chatgpt_mode.value;
+  if (modeChanged) {
+    form.elements.model.innerHTML = gptModelOptions(
+      a,
+      mode === "chat" ? "auto" : "",
+      mode,
+    );
+    form.elements.model.value =
+      mode === "chat"
+        ? "auto"
+        : (a.catalog.models || []).find((m) => m.mode === mode)?.id || "";
+  }
+  form.elements.reasoning_effort.innerHTML = gptEffortOptions(
+    a,
+    form.elements.model.value,
+  );
+  $("#model-explainer").textContent = gptModelNote(
+    a,
+    form.elements.model.value,
+    mode,
+  );
 }
 function editAccount(id) {
   const a = state.accounts.find((a) => a.id === id);
@@ -409,7 +519,7 @@ function editRoute(id = "") {
         "id",
         "label",
       )}</select></label><label>نوع المسار<select name="task">${[
-        ["chat", "محادثة ووكيل"],
+        ["chat", "محادثة عامة"],
         ["translation", "ترجمة فصول"],
         ["glossary", "استخراج مصطلحات"],
         ["review", "مراجعة"],
@@ -441,6 +551,7 @@ function settingsFrom(form) {
     "conversation_id",
     "conversation_mode",
     "reasoning_effort",
+    "chatgpt_mode",
   ])
     if (form.elements[key]) data[key] = form.elements[key].value;
   for (const key of [
@@ -533,6 +644,18 @@ async function act(name, element) {
     );
     return;
   }
+  if (name === "open-menu") {
+    $("#app-menu").showModal();
+    return;
+  }
+  if (name === "close-menu") {
+    $("#app-menu").close();
+    return;
+  }
+  if (name === "install-app") {
+    await window.aurumInstall?.();
+    return;
+  }
   if (name === "rotate-credential") {
     const form = $("#account-settings-form");
     await post(`/admin/api/accounts/${id}/credentials`, {
@@ -608,6 +731,8 @@ async function act(name, element) {
       {
         project_id: form.elements.project_id?.value || "",
         model: form.elements.model.value,
+        chatgpt_mode: form.elements.chatgpt_mode?.value,
+        reasoning_effort: form.elements.reasoning_effort?.value,
       },
     );
     if (!result.id) throw new Error("أنشأ المزوّد ردًا دون معرّف محادثة.");
@@ -642,6 +767,8 @@ document.addEventListener("click", async (event) => {
 });
 document.addEventListener("change", async (event) => {
   try {
+    if (event.target.name === "chatgpt_mode") updateGptControls(true);
+    if (event.target.name === "model") updateGptControls();
     if (event.target.name === "project_id") {
       $("#modal form").elements.conversation_id.value = "";
       chatOffset = 0;
@@ -806,6 +933,9 @@ $("#logout").addEventListener("click", () =>
     .then(showLogin)
     .catch((e) => toast(e.message, true)),
 );
+$("#menu-links").addEventListener("click", (event) => {
+  if (event.target.closest("a")) $("#app-menu").close();
+});
 window.addEventListener("hashchange", () => {
   if (state) renderPage();
 });

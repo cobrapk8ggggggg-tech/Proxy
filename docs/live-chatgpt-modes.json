@@ -1,0 +1,38 @@
+{
+  "date": "2026-10-19T20:28:02.913868+00:00",
+  "credentials_included": false,
+  "tests": [
+    {
+      "requested_model": "auto",
+      "status": "passed",
+      "reply_received": true,
+      "actual_model": "gpt-6",
+      "seconds": 5.0,
+      "saved_model_selector": "auto"
+    },
+    {
+      "requested_model": "gpt-6-instant",
+      "status": "passed",
+      "reply_received": true,
+      "actual_model": "gpt-6-instant",
+      "seconds": 7.2,
+      "saved_model_selector": "gpt-6-instant"
+    },
+    {
+      "requested_model": "gpt-6-thinking",
+      "status": "passed",
+      "reply_received": true,
+      "actual_model": "gpt-6-thinking",
+      "seconds": 4.5,
+      "saved_model_selector": "gpt-6-thinking"
+    },
+    {
+      "requested_model": "gpt-6-sol-wm",
+      "status": "passed",
+      "reply_received": true,
+      "actual_model": "gpt-6",
+      "seconds": 4.8,
+      "saved_model_selector": "gpt-6-sol-wm"
+    }
+  ]
+}

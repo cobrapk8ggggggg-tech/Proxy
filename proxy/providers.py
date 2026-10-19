@@ -9,6 +9,7 @@ import re
 import uuid
 from urllib.parse import quote, urljoin, urlparse
 import httpx
+from .chatgpt_models import model_catalog, select_model
 
 WORKER = "https://deepseek-pow.contact-3mh.workers.dev"
 
@@ -114,17 +115,21 @@ class Providers:
             )
             if isinstance(models, Exception):
                 raise models
+            entries, auto_model = model_catalog(models)
+            if not entries:
+                raise ProviderError("لم يعرض الحساب قائمة نماذج ChatGPT صالحة.")
             return {
-                "models": [
-                    {
-                        "id": m["slug"],
-                        "name": m.get("title", m["slug"]),
-                        "reasoning_efforts": m.get(
-                            "supported_reasoning_efforts",
-                            m.get("supported_thinking_efforts", []),
-                        ),
-                    }
-                    for m in models.get("models", [])
+                "models": entries,
+                "default_model": "auto",
+                "auto_model": auto_model,
+                "chatgpt_modes": [
+                    {"id": mode, "name": label}
+                    for mode, label in (
+                        ("chat", "دردشة عادية"),
+                        ("work", "وضع العمل"),
+                        ("research", "بحث معمّق"),
+                    )
+                    if any(m["mode"] == mode for m in entries)
                 ],
                 "projects": (
                     projects.get("items", []) if isinstance(projects, dict) else []
@@ -546,6 +551,12 @@ class Providers:
         provider = account["provider"]
         attachments = attachments or []
         if provider == "chatgpt":
+            try:
+                selected_model, selected_mode, model_info = select_model(
+                    account.get("catalog", {}), settings
+                )
+            except ValueError as exc:
+                raise ProviderError(str(exc), 400) from None
             async with self.client() as client:
                 headers = await self.gpt_headers(account, client)
                 cid = state.get("conversation_id")
@@ -596,7 +607,7 @@ class Providers:
                         }
                     ],
                     "parent_message_id": parent,
-                    "model": settings.get("model") or "auto",
+                    "model": selected_model,
                     "history_and_training_disabled": False,
                     "force_use_sse": True,
                     "stream": True,
@@ -613,7 +624,20 @@ class Providers:
                     )
                     body["messages"][0]["metadata"]["gizmo_id"] = settings["project_id"]
                 if settings.get("reasoning_effort") not in (None, "", "auto"):
-                    body["thinking_effort"] = settings["reasoning_effort"]
+                    effort = settings["reasoning_effort"]
+                    allowed = model_info.get("reasoning_efforts")
+                    if allowed is not None and effort not in allowed:
+                        effort = {
+                            "low": "standard",
+                            "medium": "standard",
+                            "high": "extended",
+                            "xhigh": "extended",
+                        }.get(effort, effort)
+                    if allowed is not None and model_info and effort not in allowed:
+                        raise ProviderError(
+                            "مستوى التفكير غير مدعوم للنموذج المختار.", 400
+                        )
+                    body["thinking_effort"] = effort
                 text = ""
                 finished = False
                 try:
@@ -661,6 +685,7 @@ class Providers:
                     ) from None
                 if not text.strip() or not finished:
                     raise ProviderError("لم يكتمل رد ChatGPT.")
+                state["chatgpt_mode"] = selected_mode
                 return text
         if provider == "gemini":
             session = await self.gemini_session(account)
