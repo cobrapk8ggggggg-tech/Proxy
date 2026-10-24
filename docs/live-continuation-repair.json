@@ -18,8 +18,19 @@
     ]
   },
   "deepseek_tool_cycle": {
-    "status": "blocked",
-    "reason": "Worker rejected supplied credential: INVALID_TOKEN"
+    "policy": "application",
+    "real_account": true,
+    "iphone_app_run": false,
+    "external_call_received": true,
+    "native_tools_observed": false,
+    "same_upstream_session": true,
+    "same_local_binding": true,
+    "real_file_output_returned": true,
+    "fixed_mode_same_upstream_session": true,
+    "fixed_mode_remembers_actual_tool_output": true,
+    "per_request_mode_creates_distinct_sessions_as_requested": true,
+    "status": "passed",
+    "fresh_credential_used": true
   },
   "gemini": {
     "extended_context_three_turn_unit_test": true,
@@ -36,5 +47,13 @@
     "message": "Deploys have been paused temporarily",
     "live_version": "12.1.0",
     "prepared_version": "12.2.0"
+  },
+  "ci": {
+    "status": "success",
+    "python_tests": 67,
+    "browser_tests": 22,
+    "docker_builds_passed": true,
+    "url": "https://github.com/cobrapk8ggggggg-tech/Proxy/actions/runs/40073752105",
+    "source_commit": "4746a39e405dc3f7a5938804680bc00ff936146f"
   }
 }
