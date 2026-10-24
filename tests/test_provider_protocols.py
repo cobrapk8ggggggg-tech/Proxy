@@ -420,3 +420,24 @@ async def test_provider_cannot_silently_replace_existing_session(provider):
     with pytest.raises(ProviderError, match="بدل"):
         await p.send(acct(provider), "Continue", state, {})
     assert state["conversation_id"] == "original-session"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("http_status", [400, 502])
+async def test_worker_invalid_token_has_clear_safe_error(http_status):
+    p = Providers(
+        httpx.MockTransport(
+            lambda req: httpx.Response(
+                http_status,
+                json={
+                    "error": "Authorization Failed (invalid token)",
+                    "details": "INVALID_TOKEN",
+                    "token": "private-do-not-echo",
+                },
+            )
+        )
+    )
+    with pytest.raises(ProviderError, match="INVALID_TOKEN") as error:
+        await p.send(acct("deepseek"), "hello", {}, {})
+    assert "private-do-not-echo" not in str(error.value)
+    assert error.value.status == 502

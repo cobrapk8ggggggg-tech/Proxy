@@ -314,14 +314,12 @@ test("agent environment policy is explicit and persists after saving", async ({
   page,
 }) => {
   await navigate(page, "الحسابات والمزوّدون");
-  const card = page
-    .locator(".account-card")
-    .filter({
-      has: page.getByRole("heading", {
-        name: "حساب ChatGPT الأساسي",
-        exact: true,
-      }),
-    });
+  const card = page.locator(".account-card").filter({
+    has: page.getByRole("heading", {
+      name: "حساب ChatGPT الأساسي",
+      exact: true,
+    }),
+  });
   await card.getByRole("button", { name: "إدارة الحساب" }).click();
   const policy = page.getByRole("combobox", { name: "بيئة أدوات الوكيل" });
   await expect(policy).toHaveValue("application");
@@ -330,4 +328,35 @@ test("agent environment policy is explicit and persists after saving", async ({
   await page.reload();
   await card.getByRole("button", { name: "إدارة الحساب" }).click();
   await expect(policy).toHaveValue("hybrid");
+});
+
+test("pending app updates never cover the phone login button", async ({
+  page,
+}) => {
+  await page.addInitScript(() => {
+    const worker = new EventTarget();
+    worker.controller = {};
+    worker.register = async () => ({
+      waiting: { postMessage() {} },
+      addEventListener() {},
+    });
+    Object.defineProperty(navigator, "serviceWorker", {
+      value: worker,
+      configurable: true,
+    });
+  });
+  await page.reload();
+  await expect(page.locator("#update-banner")).toBeVisible();
+  await page
+    .locator("#logout:visible, [data-action=mobile-logout]:visible")
+    .first()
+    .click();
+  await expect(page.locator("#login")).toBeVisible();
+  await expect(page.locator("#update-banner")).not.toBeVisible();
+  await page
+    .getByLabel("كلمة مرور الإدارة", { exact: false })
+    .fill("browser-test-password");
+  await page.getByRole("button", { name: "الدخول إلى لوحة التحكم" }).click();
+  await expect(page.locator("#app")).toBeVisible();
+  await expect(page.locator("#update-banner")).toBeVisible();
 });

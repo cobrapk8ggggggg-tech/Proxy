@@ -44,6 +44,25 @@ class Providers:
         try:
             response = await client.request(method, url, **kw)
             if response.status_code >= 400:
+                if urlparse(url).netloc == urlparse(WORKER).netloc:
+                    try:
+                        failure = response.json()
+                        category = json.dumps(
+                            {k: failure.get(k) for k in ("error", "details")}
+                        ).lower()
+                    except (ValueError, AttributeError):
+                        category = ""
+                    if any(
+                        code in category
+                        for code in (
+                            "invalid_token",
+                            "invalid token",
+                            "authorization failed",
+                        )
+                    ):
+                        raise ProviderError(
+                            "تعذرت مصادقة حساب DeepSeek؛ الخدمة ترفض التوكن (INVALID_TOKEN). حدّث توكن حساب المزوّد في اللوحة."
+                        )
                 raise ProviderError(
                     f"رفض المزوّد الطلب (HTTP {response.status_code}). تحقق من بيانات الحساب وصلاحياته.",
                     429 if response.status_code == 429 else 502,

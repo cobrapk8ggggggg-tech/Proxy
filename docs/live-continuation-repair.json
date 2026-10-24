@@ -1,0 +1,40 @@
+{
+  "date": "2026-10-24",
+  "credentials_included": false,
+  "iphone_app_run": false,
+  "deepseek_engine": {
+    "status": "passed",
+    "same_upstream_session_for_three_turns": true,
+    "same_local_binding": true,
+    "system_changed_each_turn": true,
+    "parent_message_id_advanced": true
+  },
+  "deepseek_raw_session_check": {
+    "same_session_for_three_turns": true,
+    "parent_ids": [
+      2,
+      4,
+      6
+    ]
+  },
+  "deepseek_tool_cycle": {
+    "status": "blocked",
+    "reason": "Worker rejected supplied credential: INVALID_TOKEN"
+  },
+  "gemini": {
+    "extended_context_three_turn_unit_test": true,
+    "live_new_version": "blocked_by_deployment_pause"
+  },
+  "chatgpt": {
+    "application_tool_roundtrip_passed": true,
+    "hybrid_native_and_external_roundtrip_passed": true,
+    "bounded_correction_unit_tests_passed": true,
+    "model_output_not_guaranteed": true
+  },
+  "railway": {
+    "status": "deployment_blocked",
+    "message": "Deploys have been paused temporarily",
+    "live_version": "12.1.0",
+    "prepared_version": "12.2.0"
+  }
+}

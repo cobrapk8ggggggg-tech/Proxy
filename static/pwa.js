@@ -63,9 +63,19 @@
       location.reload();
     }
   });
+  const updateBanner = document.querySelector("#update-banner");
+  const loginScreen = document.querySelector("#login");
+  const syncUpdateBanner = () => {
+    // On small screens the floating banner can cover the login submit button.
+    updateBanner.hidden = !waitingWorker || !loginScreen.hidden;
+  };
+  new MutationObserver(syncUpdateBanner).observe(loginScreen, {
+    attributes: true,
+    attributeFilter: ["hidden"],
+  });
   const offerUpdate = (worker) => {
     waitingWorker = worker;
-    document.querySelector("#update-banner").hidden = false;
+    syncUpdateBanner();
   };
   document
     .querySelector("#apply-update")
