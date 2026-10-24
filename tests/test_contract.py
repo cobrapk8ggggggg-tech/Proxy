@@ -567,3 +567,136 @@ def test_qwen_file_bytes_are_encrypted_and_recovered_for_next_request(env):
     assert "Qwen uploaded chapter" not in str(
         app.state.store.rows("SELECT * FROM files")
     )
+
+
+def test_changing_client_system_instructions_preserves_same_remote_chat(env):
+    c, app, p, account, h = env
+    messages = [
+        {"role": "system", "content": "Current time: 10:00. Memory: old."},
+        {"role": "user", "content": "Remember a code."},
+    ]
+    first = completion(c, h, messages).json()
+    messages[0]["content"] = "Current time: 11:00. Memory: updated."
+    second = completion(
+        c,
+        h,
+        messages
+        + [first["choices"][0]["message"], {"role": "user", "content": "Repeat it."}],
+    ).json()
+    assert first["conversation_id"] == second["conversation_id"]
+    assert p.sent[-1]["state"].get("conversation_id")
+    assert "Memory: updated." in p.sent[-1]["prompt"]
+    assert "Remember a code." not in p.sent[-1]["prompt"]
+
+
+def test_client_reformatted_tool_arguments_do_not_create_another_chat(env):
+    c, app, p, account, h = env
+    original = p.send
+
+    async def call(*args, **kwargs):
+        await original(*args, **kwargs)
+        return '{"tool_calls":[{"name":"lookup","arguments":{"b":2,"a":1}}]}'
+
+    p.send = call
+    tools = [
+        {
+            "type": "function",
+            "function": {"name": "lookup", "parameters": {"type": "object"}},
+        }
+    ]
+    messages = [{"role": "user", "content": "Look up the code."}]
+    first = completion(c, h, messages, tools=tools).json()
+    m = first["choices"][0]["message"]
+    m["tool_calls"][0]["function"]["arguments"] = '{ "a": 1, "b": 2 }'
+    p.send = original
+    second = completion(
+        c,
+        h,
+        messages
+        + [
+            m,
+            {
+                "role": "tool",
+                "tool_call_id": m["tool_calls"][0]["id"],
+                "content": "actual result",
+            },
+        ],
+        tools=tools,
+    ).json()
+    assert second["conversation_id"] == first["conversation_id"]
+
+
+def test_fixed_remote_chat_uses_durable_state_even_when_provider_list_is_empty(env):
+    c, app, p, account, h = env
+    # A remote chat created from the dashboard must be resumable after reopening.
+    app.state.store.run(
+        "UPDATE accounts SET provider='deepseek' WHERE id=?", (account["id"],)
+    )
+    created = c.post(
+        "/admin/api/accounts/" + account["id"] + "/new-chat", json={}
+    ).json()
+    assert created.get("id")
+    assert app.state.store.remote_state(account["id"], created["id"])
+
+    async def missing(*args):
+        raise AssertionError("Cached remote state should avoid the empty provider list")
+
+    p.conversation = missing
+    assert (
+        c.patch(
+            "/admin/api/accounts/" + account["id"],
+            json={
+                "settings": {
+                    "conversation_mode": "fixed",
+                    "conversation_id": created["id"],
+                }
+            },
+        ).status_code
+        == 200
+    )
+    first = completion(c, h).json()
+    second = completion(
+        c,
+        h,
+        [
+            {"role": "user", "content": "Hello"},
+            first["choices"][0]["message"],
+            {"role": "user", "content": "Continue"},
+        ],
+    ).json()
+    assert second["conversation_id"] == first["conversation_id"]
+    assert p.sent[-1]["state"]["conversation_id"] == created["id"]
+
+
+def test_old_remote_session_is_recovered_and_survives_restart(tmp_path):
+    from proxy.store import Store
+    import time
+
+    state = {
+        "conversation_id": "original-upstream-session",
+        "parent_message_id": 0,
+        "at_token": "private-context-secret",
+    }
+    store = Store(tmp_path)
+    account = store.add_account("deepseek", "fake-recovery-token")
+    store.run(
+        "INSERT INTO conversations VALUES(?,?,?,?,?,?,?,?,?)",
+        (
+            "old-local-chat",
+            account["id"],
+            "client",
+            "scope",
+            None,
+            "old-format-hash",
+            store.seal(state),
+            time.time(),
+            time.time(),
+        ),
+    )
+    assert store.remote_state(account["id"], state["conversation_id"]) == state
+    assert "private-context-secret" not in json.dumps(store.conversation_summaries())
+    store.close()
+    reopened = Store(tmp_path)
+    assert reopened.remote_state(account["id"], state["conversation_id"]) == state
+    assert reopened.conversation_summaries()[0]["parent_message_id"] == 0
+    reopened.close()

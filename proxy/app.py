@@ -46,7 +46,7 @@ def create_app(directory=None, providers=None):
     upstream = providers or Providers()
     engine = Engine(store, upstream)
     app = FastAPI(
-        title="Aurum Proxy", version="12.1.0", docs_url="/api-docs", redoc_url=None
+        title="Aurum Proxy", version="12.2.0", docs_url="/api-docs", redoc_url=None
     )
     app.state.store = store
     app.state.providers = upstream
@@ -188,7 +188,7 @@ def create_app(directory=None, providers=None):
 
     @app.get("/health")
     async def health():
-        return {"status": "ok", "service": "aurum-proxy", "version": "12.1.0"}
+        return {"status": "ok", "service": "aurum-proxy", "version": "12.2.0"}
 
     @app.get("/")
     @app.get("/admin")
@@ -275,6 +275,7 @@ def create_app(directory=None, providers=None):
         store.run("DELETE FROM responses WHERE expires<?", (now,))
         store.run("DELETE FROM idempotency WHERE expires<?", (now,))
         store.run("DELETE FROM conversations WHERE updated<?", (now - 30 * 86400,))
+        store.run("DELETE FROM remote_chats WHERE updated<?", (now - 30 * 86400,))
         events = store.rows("SELECT * FROM events ORDER BY created DESC LIMIT 120")
         stats = store.rows(
             "SELECT COUNT(*) AS requests,SUM(CASE WHEN status<400 THEN 1 ELSE 0 END) AS successes,AVG(duration) AS latency FROM events WHERE kind='completion' AND created>?",
@@ -288,13 +289,11 @@ def create_app(directory=None, providers=None):
             "accounts": store.accounts(),
             "routes": store.routes(),
             "keys": store.keys(),
-            "conversations": store.rows(
-                "SELECT id,account_id,client_id,created,updated FROM conversations ORDER BY updated DESC LIMIT 100"
-            ),
+            "conversations": store.conversation_summaries(),
             "events": events,
             "stats": stats,
             "daily": daily,
-            "version": "12.1.0",
+            "version": "12.2.0",
         }
 
     async def register(data, source, enabled):
@@ -544,7 +543,7 @@ def create_app(directory=None, providers=None):
                     },
                     bool(route["enabled"]),
                 )
-        for table in ("conversations", "files"):
+        for table in ("conversations", "files", "remote_chats"):
             store.run(f"DELETE FROM {table} WHERE account_id=?", (aid,))
         store.run("DELETE FROM idempotency")
         upstream.gemini_sessions.pop(aid, None)
@@ -554,7 +553,7 @@ def create_app(directory=None, providers=None):
     @app.delete("/admin/api/accounts/{aid}")
     async def delete_account(aid: str, who=Depends(admin)):
         account(aid)
-        for table in ("routes", "conversations", "files"):
+        for table in ("routes", "conversations", "files", "remote_chats"):
             store.run(f"DELETE FROM {table} WHERE account_id=?", (aid,))
         store.run("DELETE FROM accounts WHERE id=?", (aid,))
         upstream.gemini_sessions.pop(aid, None)
@@ -598,6 +597,8 @@ def create_app(directory=None, providers=None):
             state,
             settings,
         )
+        if value["provider"] in ("gemini", "deepseek"):
+            store.save_remote_state(aid, state)
         store.event("chat_created", aid)
         return {
             "id": state.get("conversation_id"),

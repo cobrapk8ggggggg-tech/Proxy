@@ -23,6 +23,17 @@ def content_text(content):
     )
 
 
+def canonical_function(function):
+    value = dict(function)
+    arguments = value.get("arguments")
+    if isinstance(arguments, str):
+        try:
+            value["arguments"] = json.loads(arguments)
+        except ValueError:
+            pass
+    return value
+
+
 def canonical(messages):
     return [
         {
@@ -31,7 +42,7 @@ def canonical(messages):
             **(
                 {
                     "tool_calls": [
-                        {"id": c["id"], "function": c["function"]}
+                        {"id": c["id"], "function": canonical_function(c["function"])}
                         for c in m["tool_calls"]
                     ]
                 }
@@ -92,7 +103,12 @@ def prompt_for(messages, tools, choice, parallel, environment="application"):
         instructions.append(boundary)
     if tools and choice != "none":
         instructions.append(
-            'Use only the tools listed below when needed. To request tools, your ENTIRE response must be a JSON object {"tool_calls":[{"name":"tool_name","arguments":{}}]}. Arguments must follow the full JSON Schema. Do not invent results. After tool results arrive, continue the task. Otherwise respond normally. '
+            (
+                "For CLIENT APPLICATION actions, use the functions listed below. Native ChatGPT tools remain permitted under the hybrid environment contract. "
+                if environment == "hybrid"
+                else "For this turn use only the application functions listed below. "
+            )
+            + 'To request APPLICATION functions, your ENTIRE final response must be a JSON object {"tool_calls":[{"name":"tool_name","arguments":{}}]}. Arguments must follow the full JSON Schema. Do not invent results. After application tool results arrive, continue the task or give the final answer without requesting the same completed action again. Otherwise respond normally. '
             + (
                 "Call at most one tool."
                 if not parallel

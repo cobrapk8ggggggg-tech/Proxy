@@ -552,6 +552,7 @@ class Providers:
         attachments = attachments or []
         if provider == "chatgpt":
             state.pop("native_tools_used", None)
+            state.pop("tool_route_corrected", None)
             try:
                 selected_model, selected_mode, model_info = select_model(
                     account.get("catalog", {}), settings
@@ -641,6 +642,7 @@ class Providers:
                     body["thinking_effort"] = effort
                 text = ""
                 finished = False
+                native_violation = False
                 try:
                     async with client.stream(
                         "POST",
@@ -678,10 +680,11 @@ class Providers:
                                     and settings.get("tool_environment", "application")
                                     != "hybrid"
                                 ):
-                                    raise ProviderError(
-                                        "رصدنا طلب أداة داخلية في ChatGPT بدل أدوات التطبيق؛ لم نحتسبه تنفيذًا في بيئتك. "
-                                        "لم نُعِد إرسال الطلب تلقائيًا. ابدأ محادثة جديدة بأدوات التطبيق، أو اختر وضع البيئتين إن كنت تقصد التنفيذ الداخلي."
-                                    )
+                                    native_violation = True
+                                    if settings.get("_tool_repair_attempted"):
+                                        raise ProviderError(
+                                            "لم يُرجع ChatGPT استدعاء أداة التطبيق بعد محاولة تصحيح واحدة؛ لم ننفّذ أداة وهمية."
+                                        )
                                 # Presence only: don't expose internal tool output or reasoning.
                                 state["native_tools_used"] = True
                             if (
@@ -702,6 +705,23 @@ class Providers:
                     raise ProviderError(
                         "انقطع تدفق ChatGPT؛ لم نحفظ إجابة ناقصة."
                     ) from None
+                if native_violation:
+                    if not text.strip() or not finished:
+                        raise ProviderError(
+                            "رصدنا طلب أداة داخلية ولم يكتمل الرد؛ لم نُعد إرسال العملية."
+                        )
+                    # A distinct corrective turn, never a retry of an interrupted POST.
+                    corrected = await self.send(
+                        account,
+                        "The preceding response used the wrong execution environment. The CLIENT APPLICATION has not executed that operation. Do not invoke a native tool again. Use the application JSON tool-call protocol from the original request below, respecting tool_choice=none if specified. Request the appropriate application function and STOP for its real result. Do not claim native output came from the application.\n\nORIGINAL APPLICATION REQUEST:\n"
+                        + prompt,
+                        state,
+                        {**settings, "_tool_repair_attempted": True},
+                        attachments,
+                    )
+                    state["native_tools_used"] = True
+                    state["tool_route_corrected"] = True
+                    return corrected
                 if not text.strip() or not finished:
                     raise ProviderError("لم يكتمل رد ChatGPT.")
                 state["chatgpt_mode"] = selected_mode
@@ -751,6 +771,18 @@ class Providers:
                 None,
                 state.get("at_token", ""),
             ]
+            metadata = state.get("gemini_metadata")
+            if isinstance(metadata, list):
+                context = list(metadata)
+                while len(context) < 10:
+                    context.append(None)
+                context[:3] = [
+                    state.get("conversation_id", ""),
+                    state.get("response_id", ""),
+                    state.get("choice_id", ""),
+                ]
+                if state.get("at_token"):
+                    context[9] = state["at_token"]
             data = [
                 [
                     prompt,
@@ -811,7 +843,25 @@ class Providers:
                         payload = json.loads(frame[2])
                     except ValueError:
                         continue
+                    if isinstance(nested(payload, 1), list):
+                        old = state.get("gemini_metadata", [])
+                        metadata = list(old)
+                        for index, value in enumerate(payload[1]):
+                            if index >= len(metadata):
+                                metadata.extend([None] * (index + 1 - len(metadata)))
+                            if value is not None:
+                                metadata[index] = value
+                        state["gemini_metadata"] = metadata
+                    if isinstance(nested(payload, 25), str) and payload[25]:
+                        state["at_token"] = payload[25]
                     if nested(payload, 1, 0):
+                        if (
+                            state.get("conversation_id")
+                            and state["conversation_id"] != payload[1][0]
+                        ):
+                            raise ProviderError(
+                                "أعاد Gemini محادثة أخرى بدل متابعة المحادثة المختارة؛ لم نحفظ الربط البديل."
+                            )
                         state["conversation_id"] = payload[1][0]
                     if nested(payload, 1, 1):
                         state["response_id"] = payload[1][1]
@@ -822,7 +872,9 @@ class Providers:
                         and payload[4][0][1][0]
                     ):
                         text = payload[4][0][1][0]
-                    if nested(payload, 3, "26"):
+                    if nested(payload, 3, "26") and not isinstance(
+                        nested(payload, 25), str
+                    ):
                         state["at_token"] = payload[3]["26"]
             if not text.strip():
                 raise ProviderError("أعاد Gemini إجابة فارغة.")
@@ -858,6 +910,14 @@ class Providers:
                 raise ProviderError("رفض DeepSeek الطلب أو أعاد إجابة فارغة.")
             if data.get("finish_reason") == "length":
                 raise ProviderError("وصل رد DeepSeek إلى حد التوكنات ولم يكتمل.")
+            if (
+                state.get("conversation_id")
+                and data.get("session_id")
+                and state["conversation_id"] != data["session_id"]
+            ):
+                raise ProviderError(
+                    "أنشأت خدمة DeepSeek جلسة أخرى بدل المتابعة؛ لم نحفظها كمحادثتك الأصلية."
+                )
             state["conversation_id"] = data.get(
                 "session_id", state.get("conversation_id")
             )

@@ -15,7 +15,7 @@ def acct(provider):
     }
 
 
-def frame(text):
+def frame(text, cid="remote"):
     return (
         json.dumps(
             [
@@ -25,7 +25,7 @@ def frame(text):
                     json.dumps(
                         [
                             None,
-                            ["remote", "r2"],
+                            [cid, "r2"],
                             None,
                             {"26": "private-csrf"},
                             [["choice", [text]]],
@@ -210,7 +210,7 @@ async def test_gemini_auto_models_chat_continuation_revisions_and_cookies():
         assert payload[2][:3] == ["cid", "rid", "choice"]
         return httpx.Response(
             200,
-            text=frame("A longer old snapshot") + frame("نسخة منقّحة."),
+            text=frame("A longer old snapshot", "cid") + frame("نسخة منقّحة.", "cid"),
             headers={"set-cookie": "SIDCC=rotated; Secure"},
         )
 
@@ -342,3 +342,81 @@ async def test_provider_http_errors_never_expose_headers_or_raw_response():
     assert "sensitive" not in str(error.value) and "opaque-token" not in str(
         error.value
     )
+
+
+@pytest.mark.asyncio
+async def test_gemini_preserves_extended_context_for_three_turns():
+    from urllib.parse import parse_qs
+
+    calls = []
+
+    def handle(req):
+        data = json.loads(json.loads(parse_qs(req.content.decode())["f.req"][0])[1])
+        calls.append(data[2])
+        if len(calls) > 1:
+            assert data[2][9] == "context-" + str(len(calls) - 1)
+            assert data[2][3] == "extended-state"
+        payload = [None] * 26
+        payload[1] = [
+            "remote-chat",
+            "response-" + str(len(calls)),
+            None,
+            "extended-state",
+        ]
+        payload[4] = [["choice", ["reply"]]]
+        payload[25] = "context-" + str(len(calls))
+        return httpx.Response(
+            200, text=json.dumps([["wrb.fr", None, json.dumps(payload)]])
+        )
+
+    p = Providers(httpx.MockTransport(handle))
+
+    async def session(a):
+        return {
+            "models": [],
+            "cookies": "test",
+            "index": 0,
+            "build": "build",
+            "sid": "sid",
+            "csrf": "csrf",
+        }
+
+    p.gemini_session = session
+    state = {}
+    for _ in range(3):
+        assert await p.send(acct("gemini"), "hello", state, {}) == "reply"
+    assert len(calls) == 3 and state["conversation_id"] == "remote-chat"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("provider", ["gemini", "deepseek"])
+async def test_provider_cannot_silently_replace_existing_session(provider):
+    def handle(req):
+        if provider == "deepseek":
+            return httpx.Response(
+                200,
+                json={
+                    "session_id": "unexpected-new-session",
+                    "parent_message_id": 2,
+                    "response": "reply",
+                },
+            )
+        return httpx.Response(200, text=frame("reply", "unexpected-new-session"))
+
+    p = Providers(httpx.MockTransport(handle))
+
+    async def session(a):
+        return {
+            "models": [],
+            "cookies": "test",
+            "index": 0,
+            "build": "build",
+            "sid": "sid",
+            "csrf": "csrf",
+        }
+
+    p.gemini_session = session
+    state = {"conversation_id": "original-session"}
+    with pytest.raises(ProviderError, match="بدل"):
+        await p.send(acct(provider), "Continue", state, {})
+    assert state["conversation_id"] == "original-session"

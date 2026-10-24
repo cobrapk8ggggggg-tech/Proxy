@@ -182,7 +182,7 @@ def test_environment_setting_is_validated_and_separates_conversations(env):
     assert p.sent[-1]["settings"]["tool_environment"] == "hybrid"
 
 
-def test_hybrid_native_answer_has_visible_provenance_and_tool_call_stays_standard(env):
+def test_native_provenance_is_metadata_only_and_tool_call_has_no_added_text(env):
     c, app, p, account, h = env
     c.patch(
         "/admin/api/accounts/" + account["id"],
@@ -200,7 +200,7 @@ def test_hybrid_native_answer_has_visible_provenance_and_tool_call_stays_standar
         "tools": TOOLS,
     }
     result = c.post("/v1/chat/completions", headers=h, json=body).json()
-    assert "ChatGPT داخلية" in result["choices"][0]["message"]["content"]
+    assert result["choices"][0]["message"]["content"] == "Calculated internally"
     assert result["execution"]["native_tools_observed"] is True
 
     async def call(a, prompt, state, settings, attachments=None):
@@ -211,7 +211,7 @@ def test_hybrid_native_answer_has_visible_provenance_and_tool_call_stays_standar
 
     p.send = call
     result = c.post("/v1/chat/completions", headers=h, json=body).json()
-    assert "ينتظر تنفيذ العميل" in result["choices"][0]["message"]["content"]
+    assert result["choices"][0]["message"]["content"] is None
     assert result["choices"][0]["finish_reason"] == "tool_calls"
     assert result["execution"]["application_tool_calls"] == 1
     chunks = [
@@ -219,14 +219,11 @@ def test_hybrid_native_answer_has_visible_provenance_and_tool_call_stays_standar
         for s in chat_chunks(result)
         if "[DONE]" not in s
     ]
-    assert any(
-        "ChatGPT داخلية" in chunk["choices"][0]["delta"].get("content", "")
-        for chunk in chunks
-    )
+    assert not any(chunk["choices"][0]["delta"].get("content") for chunk in chunks)
     assert any(chunk["choices"][0]["delta"].get("tool_calls") for chunk in chunks)
     response = as_response(result)
     assert response["execution"]["native_tools_observed"] is True
-    assert {item["type"] for item in response["output"]} == {"function_call", "message"}
+    assert {item["type"] for item in response["output"]} == {"function_call"}
 
 
 @pytest.mark.asyncio
@@ -259,3 +256,53 @@ async def test_external_json_is_not_native_execution_and_old_trace_is_cleared():
         {"_client_tools": True},
     )
     assert result == reply and not state.get("native_tools_used")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("second_native", [False, True])
+async def test_application_mode_corrects_once_then_fails_closed(second_native):
+    posts = []
+    native = streamed(
+        {"author": {"role": "assistant"}, "recipient": "python", "channel": "analysis"}
+    )
+
+    def final(text):
+        return streamed(
+            {
+                "author": {"role": "assistant"},
+                "channel": "final",
+                "status": "finished_successfully",
+                "content": {"parts": [text]},
+            }
+        )
+
+    def handle(req):
+        if req.method == "GET":
+            return httpx.Response(
+                200, json={"current_node": "latest", "default_account_id": "a"}
+            )
+        posts.append(json.loads(req.content))
+        if len(posts) == 1 or second_native:
+            return httpx.Response(200, text=native + final("Internal output"))
+        return httpx.Response(
+            200,
+            text=final(
+                '{"tool_calls":[{"name":"shell_execute","arguments":{"command":"pwd"}}]}'
+            ),
+        )
+
+    p = Providers(httpx.MockTransport(handle))
+    state = {}
+    a = {"id": "test", "provider": "chatgpt", "credential": "test-token"}
+    if second_native:
+        with pytest.raises(ProviderError, match="تصحيح واحدة"):
+            await p.send(a, "Original request", state, {"_client_tools": True})
+    else:
+        text = await p.send(a, "Original request", state, {"_client_tools": True})
+        assert json.loads(text)["tool_calls"][0]["name"] == "shell_execute"
+        assert state["tool_route_corrected"] and state["native_tools_used"]
+    assert len(posts) == 2
+    assert posts[1]["conversation_id"] == "remote"
+    assert (
+        "wrong execution environment" in posts[1]["messages"][0]["content"]["parts"][0]
+    )

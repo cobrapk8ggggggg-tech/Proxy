@@ -36,7 +36,13 @@ class Engine:
 
     def digest(self, messages):
         return hashlib.sha256(
-            json.dumps(canonical(messages), ensure_ascii=False, sort_keys=True).encode()
+            json.dumps(
+                canonical(
+                    [m for m in messages if m["role"] not in ("system", "developer")]
+                ),
+                ensure_ascii=False,
+                sort_keys=True,
+            ).encode()
         ).hexdigest()
 
     def validate(self, body):
@@ -310,8 +316,17 @@ class Engine:
                 state = self.store.unseal(fresh[0]["state"]) if fresh else {}
             else:
                 state = (
-                    await self.providers.conversation(account, fixed) if fixed else {}
+                    (
+                        self.store.remote_state(account["id"], fixed)
+                        or await self.providers.conversation(account, fixed)
+                    )
+                    if fixed
+                    else {}
                 )
+            if fixed and account["provider"] in ("gemini", "deepseek"):
+                cached = self.store.remote_state(account["id"], fixed)
+                if cached:
+                    state = cached
             pending = (
                 messages[last_assistant + 1 :]
                 if conversation and last_assistant >= 0
@@ -438,16 +453,9 @@ class Engine:
                     if account["provider"] == "chatgpt"
                     else False
                 )
-                notice = ""
-                if tools and native_observed:
-                    notice = (
-                        "[رُصد استخدام أداة ChatGPT داخلية؛ استدعاء أدوات التطبيق أدناه ينتظر تنفيذ العميل.]\n\n"
-                        if calls
-                        else "[رُصد استخدام أداة ChatGPT داخلية؛ لم يُرسل استدعاء أداة إلى التطبيق في هذه الجولة.]\n\n"
-                    )
                 message = {
                     "role": "assistant",
-                    "content": (notice or None) if calls else notice + text,
+                    "content": None if calls else text,
                     **({"tool_calls": calls} if calls else {}),
                 }
                 result = completion(body["model"], message, cid)
@@ -457,6 +465,8 @@ class Engine:
                         "native_tools_observed": native_observed,
                         "application_tool_calls": len(calls or []),
                     }
+                if account["provider"] in ("gemini", "deepseek"):
+                    self.store.save_remote_state(account["id"], state)
                 self.store.run(
                     "INSERT INTO conversations VALUES(?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET history_hash=excluded.history_hash,state=excluded.state,updated=excluded.updated",
                     (

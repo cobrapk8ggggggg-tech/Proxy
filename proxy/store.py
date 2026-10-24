@@ -43,6 +43,7 @@ CREATE TABLE IF NOT EXISTS events(id TEXT PRIMARY KEY, kind TEXT, account_id TEX
 CREATE TABLE IF NOT EXISTS files(id TEXT PRIMARY KEY,client_id TEXT,account_id TEXT,name TEXT,attachment TEXT,expires REAL);
 CREATE TABLE IF NOT EXISTS responses(id TEXT PRIMARY KEY,client_id TEXT,payload TEXT,expires REAL);
 CREATE TABLE IF NOT EXISTS idempotency(id TEXT PRIMARY KEY,body_hash TEXT,payload TEXT,expires REAL);
+CREATE TABLE IF NOT EXISTS remote_chats(account_id TEXT, remote_id TEXT, state TEXT, updated REAL, PRIMARY KEY(account_id,remote_id));
 CREATE TABLE IF NOT EXISTS admin_sessions(hash TEXT PRIMARY KEY, expires REAL);
 """)
         self.db.commit()
@@ -88,6 +89,48 @@ CREATE TABLE IF NOT EXISTS admin_sessions(hash TEXT PRIMARY KEY, expires REAL);
         row = self.public_account(rows[0])
         row["credential"] = self.unseal(rows[0]["secret"])
         return row
+
+    def conversation_summaries(self):
+        result = []
+        for row in self.rows(
+            "SELECT id,account_id,client_id,created,updated,state FROM conversations ORDER BY updated DESC LIMIT 100"
+        ):
+            state = self.unseal(row.pop("state"))
+            result.append(
+                {
+                    **row,
+                    "remote_id": state.get("conversation_id"),
+                    "parent_message_id": state.get(
+                        "parent_message_id", state.get("response_id")
+                    ),
+                }
+            )
+        return result
+
+    def remote_state(self, account_id, remote_id):
+        rows = self.rows(
+            "SELECT state FROM remote_chats WHERE account_id=? AND remote_id=?",
+            (account_id, remote_id),
+        )
+        if rows:
+            return self.unseal(rows[0]["state"])
+        # Recover pre-upgrade sessions without trusting an incomplete provider list.
+        for row in self.rows(
+            "SELECT state FROM conversations WHERE account_id=? ORDER BY updated DESC LIMIT 1000",
+            (account_id,),
+        ):
+            state = self.unseal(row["state"])
+            if state.get("conversation_id") == remote_id:
+                self.save_remote_state(account_id, state)
+                return state
+        return None
+
+    def save_remote_state(self, account_id, state):
+        if state.get("conversation_id"):
+            self.run(
+                "INSERT INTO remote_chats VALUES(?,?,?,?) ON CONFLICT(account_id,remote_id) DO UPDATE SET state=excluded.state,updated=excluded.updated",
+                (account_id, state["conversation_id"], self.seal(state), time.time()),
+            )
 
     def add_account(
         self, provider, credential, label="", source="dashboard", enabled=True
